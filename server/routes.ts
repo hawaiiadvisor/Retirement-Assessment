@@ -26,46 +26,25 @@ export async function registerRoutes(
     }
   });
   
-  const TARGET_PRICE_CENTS = 100; // $1.00
-  
-  // Create Stripe Checkout session for $1 one-time payment
+  // Create Stripe Checkout session for $97 one-time payment
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
       const stripe = await getUncachableStripeClient();
       
-      // Get the assessment price from Stripe with correct amount
+      // Get the assessment price from Stripe
       const pricesResult = await db.execute(
-        sql`SELECT p.id as price_id, p.unit_amount, pr.id as product_id, pr.name
+        sql`SELECT p.id as price_id, pr.id as product_id, pr.name
             FROM stripe.prices p
             JOIN stripe.products pr ON p.product = pr.id
             WHERE pr.name = 'Retirement Readiness Assessment'
             AND p.active = true
-            ORDER BY p.created DESC
             LIMIT 1`
       );
       
       let priceId: string;
       
       if (pricesResult.rows.length > 0) {
-        const existingPriceId = pricesResult.rows[0].price_id as string;
-        const existingAmount = pricesResult.rows[0].unit_amount as number;
-        const productId = pricesResult.rows[0].product_id as string;
-        
-        // Check if the price amount is correct
-        if (existingAmount === TARGET_PRICE_CENTS) {
-          priceId = existingPriceId;
-        } else {
-          // Deactivate the old price and create a new one with correct amount
-          await stripe.prices.update(existingPriceId, { active: false });
-          
-          const newPrice = await stripe.prices.create({
-            product: productId,
-            unit_amount: TARGET_PRICE_CENTS,
-            currency: 'usd',
-          });
-          
-          priceId = newPrice.id;
-        }
+        priceId = pricesResult.rows[0].price_id as string;
       } else {
         // Fallback: create product and price if not found
         const product = await stripe.products.create({
@@ -75,7 +54,7 @@ export async function registerRoutes(
         
         const price = await stripe.prices.create({
           product: product.id,
-          unit_amount: TARGET_PRICE_CENTS,
+          unit_amount: 9700,
           currency: 'usd',
         });
         
