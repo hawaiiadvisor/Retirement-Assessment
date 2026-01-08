@@ -110,7 +110,12 @@ export const resultsSchema = z.object({
     worst_case_portfolio: z.number(),
     retirement_duration_years: z.number(),
     annual_spending_year1: z.number(),
-    guaranteed_income_at_start: z.number()
+    guaranteed_income_at_start: z.number(),
+    distribution_data: z.array(z.object({
+      range: z.string(),
+      count: z.number(),
+      percentage: z.number()
+    })).optional()
   })
 });
 

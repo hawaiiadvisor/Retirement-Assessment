@@ -2,7 +2,7 @@
 
 ## Overview
 
-A paid, gated web application that provides CFP-designed retirement readiness self-assessments. The application collects structured retirement inputs, applies CFP-style judgment and risk weighting, runs Monte Carlo simulations, and generates personalized "Retirement Readiness Brief" reports.
+A paid, gated web application that provides CFP®-designed retirement readiness self-assessments. The application collects structured retirement inputs, applies CFP®-style judgment and risk weighting, runs Monte Carlo simulations, and generates personalized "Retirement Readiness Brief" reports.
 
 This is an educational product that does NOT provide personalized financial advice. It encodes the judgment, experience, and mental models of a Certified Financial Planner (CFP®) when evaluating retirement readiness.
 

@@ -24,6 +24,7 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import type { Assessment, ResultsData } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
@@ -272,30 +273,77 @@ export default function ResultsPage() {
             <AccordionItem value="simulation">
               <AccordionTrigger>Simulation Details</AccordionTrigger>
               <AccordionContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2">
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Scenarios Run</p>
-                    <p className="text-2xl font-semibold">{results.simulation_details.trials.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Retirement Duration</p>
-                    <p className="text-2xl font-semibold">{results.simulation_details.retirement_duration_years} years</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Year 1 Spending</p>
-                    <p className="text-2xl font-semibold">${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Guaranteed Income</p>
-                    <p className="text-2xl font-semibold">${(results.simulation_details.guaranteed_income_at_start / 1000).toFixed(0)}k/yr</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Median Ending Portfolio</p>
-                    <p className="text-2xl font-semibold">${(results.simulation_details.median_ending_portfolio / 1000000).toFixed(1)}M</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Worst Case</p>
-                    <p className="text-2xl font-semibold">${(results.simulation_details.worst_case_portfolio / 1000).toFixed(0)}k</p>
+                <div className="space-y-6 pt-2">
+                  {results.simulation_details.distribution_data && results.simulation_details.distribution_data.length > 0 && (
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <h4 className="text-sm font-medium mb-4 text-center">Monte Carlo Outcome Distribution</h4>
+                      <p className="text-xs text-muted-foreground text-center mb-4">
+                        Distribution of ending portfolio values across {results.simulation_details.trials.toLocaleString()} simulated scenarios
+                      </p>
+                      <div className="h-64" data-testid="chart-monte-carlo">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={results.simulation_details.distribution_data} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
+                            <XAxis 
+                              dataKey="range" 
+                              tick={{ fontSize: 11 }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={60}
+                              interval={0}
+                            />
+                            <YAxis 
+                              tickFormatter={(value) => `${value}%`}
+                              tick={{ fontSize: 11 }}
+                              width={45}
+                            />
+                            <Tooltip 
+                              formatter={(value: number, name: string) => [`${value.toFixed(1)}%`, 'Scenarios']}
+                              labelFormatter={(label) => `Ending Portfolio: ${label}`}
+                              contentStyle={{ fontSize: 12 }}
+                            />
+                            <Bar dataKey="percentage" radius={[4, 4, 0, 0]}>
+                              {results.simulation_details.distribution_data.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`}
+                                  fill={entry.range === "Failed" 
+                                    ? "hsl(var(--destructive))" 
+                                    : "hsl(var(--primary))"
+                                  }
+                                  fillOpacity={entry.range === "Failed" ? 1 : 0.7 + (index * 0.04)}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Scenarios Run</p>
+                      <p className="text-2xl font-semibold">{results.simulation_details.trials.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Retirement Duration</p>
+                      <p className="text-2xl font-semibold">{results.simulation_details.retirement_duration_years} years</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Year 1 Spending</p>
+                      <p className="text-2xl font-semibold">${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Guaranteed Income</p>
+                      <p className="text-2xl font-semibold">${(results.simulation_details.guaranteed_income_at_start / 1000).toFixed(0)}k/yr</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Median Ending Portfolio</p>
+                      <p className="text-2xl font-semibold">${(results.simulation_details.median_ending_portfolio / 1000000).toFixed(1)}M</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Worst Case</p>
+                      <p className="text-2xl font-semibold">${(results.simulation_details.worst_case_portfolio / 1000).toFixed(0)}k</p>
+                    </div>
                   </div>
                 </div>
               </AccordionContent>
@@ -320,7 +368,7 @@ export default function ResultsPage() {
             <CardHeader>
               <CardTitle className="text-base">Want to explore further?</CardTitle>
               <CardDescription>
-                If you'd like help reviewing this in more depth with a CFP, you can schedule a consultation.
+                If you'd like help reviewing this in more depth with a CFP\u00AE, you can schedule a consultation.
               </CardDescription>
             </CardHeader>
             <CardContent>

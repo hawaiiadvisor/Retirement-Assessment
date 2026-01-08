@@ -1,4 +1,4 @@
-// CFP-designed ruleset configuration
+// CFP®-designed ruleset configuration
 // Owner-editable assumptions for Monte Carlo simulation and risk scoring
 
 export const ruleset = {

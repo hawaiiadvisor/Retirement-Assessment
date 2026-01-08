@@ -2,8 +2,8 @@ import { ruleset } from "@shared/ruleset";
 import type { IntakeData, ResultsData } from "@shared/schema";
 
 /**
- * CFP-designed Monte Carlo simulation engine for retirement readiness assessment.
- * This encodes the judgment, experience, and mental models of a CFP when evaluating retirement readiness.
+ * CFP®-designed Monte Carlo simulation engine for retirement readiness assessment.
+ * This encodes the judgment, experience, and mental models of a CFP® when evaluating retirement readiness.
  */
 
 // Helper to generate normally distributed random numbers (Box-Muller transform)
@@ -605,6 +605,9 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
   const year1Spending = calculateAnnualSpending(intake, 0, intake.retirement_age, false, 0);
   const year1GuaranteedIncome = calculateGuaranteedIncome(intake, 0, intake.retirement_age);
   
+  // Generate distribution data for chart
+  const distributionData = generateDistributionData(endingPortfolios, trials);
+  
   // Generate results
   return {
     verdict,
@@ -627,7 +630,34 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
       worst_case_portfolio: Math.round(endingPortfolios[worstCaseIndex] || 0),
       retirement_duration_years: duration,
       annual_spending_year1: Math.round(year1Spending),
-      guaranteed_income_at_start: Math.round(year1GuaranteedIncome)
+      guaranteed_income_at_start: Math.round(year1GuaranteedIncome),
+      distribution_data: distributionData
     }
   };
+}
+
+// Generate distribution data for the histogram chart
+function generateDistributionData(portfolios: number[], total: number): { range: string; count: number; percentage: number }[] {
+  // Define mutually exclusive buckets
+  const buckets = [
+    { test: (p: number) => p <= 0, label: "Failed" },
+    { test: (p: number) => p > 0 && p <= 250000, label: "$0-250K" },
+    { test: (p: number) => p > 250000 && p <= 500000, label: "$250K-500K" },
+    { test: (p: number) => p > 500000 && p <= 1000000, label: "$500K-1M" },
+    { test: (p: number) => p > 1000000 && p <= 2000000, label: "$1M-2M" },
+    { test: (p: number) => p > 2000000 && p <= 3000000, label: "$2M-3M" },
+    { test: (p: number) => p > 3000000 && p <= 5000000, label: "$3M-5M" },
+    { test: (p: number) => p > 5000000, label: "$5M+" }
+  ];
+  
+  const distribution = buckets.map(bucket => {
+    const count = portfolios.filter(bucket.test).length;
+    return {
+      range: bucket.label,
+      count,
+      percentage: Math.round((count / total) * 1000) / 10
+    };
+  }).filter(d => d.count > 0);
+  
+  return distribution;
 }
