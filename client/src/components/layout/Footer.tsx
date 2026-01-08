@@ -10,7 +10,7 @@ export function Footer() {
             Results depend on user inputs and assumptions that may differ materially from actual outcomes.
           </p>
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Can I Retire Yet? All rights reserved.
+            &copy; {new Date().getFullYear()} Ready to Retire? All rights reserved.
           </p>
         </div>
       </div>

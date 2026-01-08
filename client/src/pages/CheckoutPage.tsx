@@ -39,7 +39,7 @@ export default function CheckoutPage() {
         <div className="max-w-md mx-auto px-6">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-semibold tracking-tight">
-              Can I Retire Yet?
+              Ready to Retire?
             </h1>
             <p className="text-muted-foreground mt-3 text-lg">
               A CFP®-designed retirement readiness assessment

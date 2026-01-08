@@ -14,7 +14,7 @@ export function Header({ currentStep, totalSteps = 7, showProgress = false }: He
       <div className="flex h-full items-center justify-between px-6 max-w-6xl mx-auto gap-4">
         <div className="flex items-center gap-2">
           <span className="font-serif text-lg font-semibold tracking-tight" data-testid="text-logo">
-            Can I Retire Yet?
+            Ready to Retire?
           </span>
         </div>
         

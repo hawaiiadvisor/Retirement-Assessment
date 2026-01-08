@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 
 const FROM_EMAIL = 'noreply@resend.dev';
-const APP_NAME = 'Can I Retire Yet?';
+const APP_NAME = 'Ready to Retire?';
 
 function getResendClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
