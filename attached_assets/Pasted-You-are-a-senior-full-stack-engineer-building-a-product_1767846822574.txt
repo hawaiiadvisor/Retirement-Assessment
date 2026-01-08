@@ -1,0 +1,366 @@
+You are a senior full-stack engineer building a production-ready MVP SaaS application for a paid retirement readiness self-assessment called:
+
+“Can I Retire Yet?”
+
+This application must faithfully encode the judgment, experience, and mental models of a CFP® when evaluating retirement readiness. It is NOT a generic calculator and NOT generic AI advice.
+
+========================
+CORE PURPOSE
+========================
+
+Build a paid, gated web application that:
+1) Collects structured retirement inputs designed by a CFP®
+2) Applies CFP-style judgment and risk weighting
+3) Runs a Monte Carlo simulation grounded in real planning logic
+4) Generates a calm, fiduciary-toned “Retirement Readiness Brief”
+5) Stores user data long-term for future access
+6) Allows the owner to update assumptions and logic without rewriting code
+7) Optionally directs users to schedule 1-on-1 help with a CFP®, without implying an advisory relationship
+
+This product is EDUCATIONAL. It does NOT provide personalized financial advice.
+
+========================
+TECH STACK (USE EXACTLY)
+========================
+
+- Next.js (App Router) + TypeScript
+- TailwindCSS
+- Supabase (Postgres) for database
+- Stripe Checkout + webhooks
+- Resend for email delivery
+- No user accounts; magic-link access only
+- Marketing site hosted separately on Webflow
+
+========================
+DOMAIN STRUCTURE
+========================
+
+- Marketing site: https://canIretireyet.com
+- App: https://app.canIretireyet.com
+
+========================
+PAYMENT FLOW (PAY FIRST)
+========================
+
+1) Webflow CTA links to: https://app.canIretireyet.com/checkout
+2) /checkout creates a Stripe Checkout Session
+3) Stripe success redirects to:
+   https://app.canIretireyet.com/start?session_id={CHECKOUT_SESSION_ID}
+4) App verifies payment
+5) App creates assessment session
+6) App emails a magic link to Stripe customer email
+7) User completes intake and views report
+
+========================
+CORE ROUTES
+========================
+
+GET  /checkout
+POST /api/stripe/create-checkout-session
+POST /api/stripe/webhook
+GET  /start
+GET  /intake/[assessment_id]
+POST /api/assessment/submit
+GET  /results/[assessment_id]
+POST /api/assessment/resend-link
+
+========================
+DATABASE SCHEMA (SUPABASE)
+========================
+
+TABLE: assessments
+- id (uuid, pk)
+- created_at
+- updated_at
+- status: 'draft' | 'paid' | 'submitted'
+- customer_email
+- stripe_checkout_session_id
+- paid_at
+- intake_json (jsonb)
+- results_json (jsonb)
+- logic_version (text)
+- ruleset_version (text)
+- magic_token_hash
+- magic_token_expires_at
+
+DATA RETENTION:
+- Store assessments and results long-term
+- Allow users to revisit reports via magic link
+- Include privacy disclaimer acknowledging long-term storage
+
+========================
+MAGIC LINK SECURITY
+========================
+
+- Generate cryptographically secure random token (≥32 bytes)
+- Store only hashed token in database
+- Token valid for 30 days (extendable via resend)
+- All database access server-side only
+- Supabase Row Level Security enabled
+
+========================
+INTAKE QUESTIONS (IMPLEMENT EXACTLY)
+========================
+
+Household & timing:
+1) planning_for: 'self' | 'couple'
+2) user_age (number)
+3) spouse_age (number, optional)
+4) retirement_age (number — earliest household retirement)
+5) flexibility_score (0–10)
+6) retire_same_time:
+   'same' | 'spouse_longer' | 'spouse_earlier' | 'not_sure'
+
+Life expectancy:
+7a) user_life_expectancy:
+   'early_80s' | 'mid_80s' | 'late_80s' | '90_plus' | 'not_sure'
+7b) spouse_life_expectancy (optional)
+
+Long-term care:
+7c) ltc_expectation:
+   'none' | 'one_may_need' | 'both_may_need' | 'not_sure'
+7d) ltc_insurance:
+   'comprehensive' | 'partial' | 'none' | 'not_sure'
+
+Spending:
+8) monthly_spending_ex_mortgage (number)
+   NOTE:
+   - If renting, include rent
+   - If mortgage, do NOT include mortgage here
+
+8a) has_mortgage (boolean)
+    if yes:
+    - mortgage_monthly (number)
+    - mortgage_payoff_year (number)
+
+8b) pre65_healthcare:
+    'no' | 'yes' | 'not_sure'
+    if yes:
+    - pre65_healthcare_monthly (number)
+    - pre65_healthcare_years (number)
+
+8c) spouse_employer_health:
+    'yes' | 'no' | 'not_sure'
+    (only if retire_same_time='spouse_longer')
+
+9) spending_confidence (0–10)
+
+10) early_spending_pattern:
+    'higher' | 'same' | 'lower' | 'one_time_purchases' | 'not_sure'
+
+Guaranteed income:
+11) social_security:
+    - claim_age (number | null)
+    - monthly_household (number | null)
+    - not_sure (boolean)
+
+12) pension_annuity:
+    - has (boolean)
+    if yes:
+    - monthly (number)
+    - start_age (number)
+    - survivor: 'full' | 'partial' | 'none' | 'not_sure'
+
+13) rental_business_income:
+    - has (boolean)
+    if yes:
+    - annual_amount (number)
+    - start_age (number)
+    - end_age (number | 'ongoing')
+    - reliability: 'stable' | 'variable' | 'uncertain'
+
+Portfolio:
+14) assets_bucket:
+    '<500k' | '500k_1m' | '1m_2m' | '2m_3m' | '3m_plus' | 'not_sure'
+
+15) allocation_bucket:
+    'mostly_stocks' | 'balanced' | 'conservative' | 'concentrated' | 'not_sure'
+
+16) diversification_confidence (0–10)
+
+Stress & behavior:
+17) bridge_years:
+    '0_2' | '3_5' | '6_10' | '10_plus' | 'not_sure'
+
+18) market_stress_response:
+    'cash_1_2_years' | 'reduce_spending' | 'return_to_work' | 'high_stress' | 'not_sure'
+
+Psychology:
+19) worries_free_text
+20) regret_tradeoff
+21) readiness_feel (0–10)
+22) acknowledgment_checkbox (required)
+
+========================
+TIMELINE & AGE MAPPING (EXPLICIT)
+========================
+
+- Assume current_year = 2026
+- birth_year_user = 2026 - user_age
+- birth_year_spouse = 2026 - spouse_age (if applicable)
+- Simulation year 0 = retirement_age
+- Simulation year i → age = retirement_age + i
+
+Mortgage:
+- payoff_age = mortgage_payoff_year - birth_year_user
+- Apply mortgage until age < payoff_age
+
+========================
+RULESET CONFIG (OWNER-EDITABLE)
+========================
+
+Create ruleset.json (or TS equivalent):
+
+ltc:
+- cost_per_year = 100000
+- years = 3
+- probability_one = 0.40
+- probability_both = 0.40
+- insurance_reduction:
+    comprehensive: 0.8–1.0
+    partial: 0.4–0.6
+    none: 0.0–0.2
+
+healthcare:
+- default_pre65_per_person = 1000
+
+monte_carlo:
+- trials = 3000
+- inflation = fixed
+- allocation_return_volatility_map
+
+duration_tiers:
+- <=30 normal
+- 31–35 elevated
+- 36–40 high
+- 40+ extreme
+
+scoring_penalties_and_offsets:
+- duration penalties
+- LTC penalties
+- early withdrawal penalties
+- cash buffer offsets
+- flexibility offsets
+- mortgage payoff offsets
+- employer healthcare offsets
+- diversification penalties
+
+========================
+SPENDING & CASH-FLOW MODEL
+========================
+
+Annual spending by year =
+- baseline_spending * 12
++ mortgage (until payoff)
++ pre-65 healthcare
++ one-time purchases (early years)
++ LTC costs (if triggered)
+
+Guaranteed income subtracts from spending:
+portfolio_withdrawal = max(0, spending − guaranteed_income)
+
+========================
+LTC TAIL-RISK MODELING
+========================
+
+- LTC is not averaged
+- Occurs late retirement (random age 80–88)
+- one_may_need → event occurs in probability_one % of trials
+- both_may_need → two independent events
+- not_sure → treat conservatively as one event
+- Insurance reduces cost per ruleset
+- LTC materially reduces probability of success
+
+========================
+MONTE CARLO MECHANICS
+========================
+
+For each trial:
+1) Generate annual return
+2) Apply return to portfolio
+3) Subtract withdrawal
+4) If portfolio < 0 → failure
+
+- Cash buffer logic:
+  If user has cash reserves and return is negative in years 1–2,
+  withdrawals are covered by cash first.
+
+- Probability bands:
+  >=85% Strong
+  70–85% Moderate
+  <70% Weak
+
+IMPORTANT:
+- Do NOT allow “On Track” verdict if duration ≥40
+  unless guaranteed income coverage AND flexibility are very strong
+
+========================
+FINAL OUTPUT (RETIREMENT READINESS BRIEF)
+========================
+
+Return:
+- verdict: On Track | Borderline | At Risk
+- top_3_risks (ranked, plain English)
+- top_3_levers (ranked)
+- what_matters_less
+- assumptions_and_limits
+- special callouts:
+  - long retirement duration
+  - early sequence risk
+  - mortgage payoff effect
+  - pre-65 healthcare bridge
+  - long-term care tail risk
+  - diversification/concentration risk
+
+Tone:
+- calm
+- conservative
+- fiduciary
+- no guarantees
+
+========================
+OPTIONAL CFP HANDOFF (COMPLIANT)
+========================
+
+On the results page, include an OPTIONAL, non-prominent section:
+
+“If you’d like help reviewing this in more depth with a CFP®, you can visit:
+https://hawaiiadvisor.com to schedule a consultation.”
+
+REQUIREMENTS:
+- This must be optional
+- Must NOT imply advisory relationship
+- Must NOT frame as a recommendation
+- Must include disclaimer:
+  “Using this tool does not create an advisory or fiduciary relationship.”
+
+========================
+COMPLIANCE DISCLOSURES (MUST INCLUDE)
+========================
+
+- Educational only; not personalized advice
+- No fiduciary or advisory relationship created
+- Monte Carlo results are illustrative, not guarantees
+- Results depend on user inputs and assumptions
+- Long-term care, taxes, markets, and longevity may differ materially
+- Data stored long-term; reference Privacy Policy
+
+========================
+UX REQUIREMENTS
+========================
+
+- Multi-step wizard (7–9 steps)
+- Progress bar
+- Autosave
+- Clear helper text
+- Mobile responsive
+- Premium, calm UI (no hype)
+
+========================
+DELIVERABLES
+========================
+
+- Working app
+- README with setup instructions
+- Clear comments explaining CFP logic
+- Ruleset file with owner-editable assumptions
