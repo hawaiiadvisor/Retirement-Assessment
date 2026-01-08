@@ -27,10 +27,10 @@ async function createProducts() {
 
   console.log('Created product:', product.id);
 
-  // Create the $97 one-time price
+  // Create the $1 one-time price
   const price = await stripe.prices.create({
     product: product.id,
-    unit_amount: 9700, // $97.00 in cents
+    unit_amount: 100, // $1.00 in cents
     currency: 'usd',
     metadata: {
       display_name: 'One-time Assessment'

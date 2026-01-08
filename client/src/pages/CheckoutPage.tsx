@@ -6,7 +6,7 @@ import { Check, Shield, Lock } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
-const PRICE = 97;
+const PRICE = 1;
 const PRODUCT_NAME = "Retirement Readiness Assessment";
 
 const features = [

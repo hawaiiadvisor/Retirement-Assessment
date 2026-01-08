@@ -54,7 +54,7 @@ export async function registerRoutes(
         
         const price = await stripe.prices.create({
           product: product.id,
-          unit_amount: 9700,
+          unit_amount: 100,
           currency: 'usd',
         });
         
