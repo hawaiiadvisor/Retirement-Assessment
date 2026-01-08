@@ -368,7 +368,7 @@ export default function ResultsPage() {
             <CardHeader>
               <CardTitle className="text-base">Want to explore further?</CardTitle>
               <CardDescription>
-                If you'd like help reviewing this in more depth with a CFP\u00AE, you can schedule a consultation.
+                If you'd like help reviewing this in more depth with a CFP®, you can schedule a consultation.
               </CardDescription>
             </CardHeader>
             <CardContent>

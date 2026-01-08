@@ -11,7 +11,7 @@ const PRICE = 97;
 const PRODUCT_NAME = "Retirement Readiness Assessment";
 
 const features = [
-  "Comprehensive intake questionnaire designed by a CFP\u00AE",
+  "Comprehensive intake questionnaire designed by a CFP®",
   "Monte Carlo simulation with 3,000+ scenarios",
   "Personalized Retirement Readiness Brief",
   "Top 3 risks and levers specific to your situation",
@@ -42,7 +42,7 @@ export default function CheckoutPage() {
               Can I Retire Yet?
             </h1>
             <p className="text-muted-foreground mt-3 text-lg">
-              A CFP\u00AE-designed retirement readiness assessment
+              A CFP®-designed retirement readiness assessment
             </p>
           </div>
           
