@@ -5,7 +5,6 @@ import { Footer } from "@/components/layout/Footer";
 import { Check, Shield, Lock } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useLocation } from "wouter";
 
 const PRICE = 97;
 const PRODUCT_NAME = "Retirement Readiness Assessment";
@@ -19,15 +18,16 @@ const features = [
 ];
 
 export default function CheckoutPage() {
-  const [, setLocation] = useLocation();
-  
   const createCheckoutMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/checkout/create-session', {});
-      return await response.json() as { assessmentId: string };
+      return await response.json() as { url: string };
     },
     onSuccess: (data) => {
-      setLocation(`/intake/${data.assessmentId}`);
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url;
+      }
     }
   });
   
@@ -76,7 +76,7 @@ export default function CheckoutPage() {
                 disabled={createCheckoutMutation.isPending}
                 data-testid="button-checkout"
               >
-                {createCheckoutMutation.isPending ? "Starting..." : "Start Assessment"}
+                {createCheckoutMutation.isPending ? "Redirecting to payment..." : "Start Assessment"}
               </Button>
               
               <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-2">

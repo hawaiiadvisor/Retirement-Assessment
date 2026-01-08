@@ -4,24 +4,146 @@ import { storage } from "./storage";
 import { intakeSchema } from "@shared/schema";
 import { runMonteCarloSimulation } from "./simulation";
 import { z } from "zod";
+import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   
-  // Create a new assessment (checkout flow simulation for MVP)
+  // Get Stripe publishable key for frontend
+  app.get("/api/stripe/config", async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (error) {
+      console.error("Error getting Stripe config:", error);
+      res.status(500).json({ message: "Failed to get Stripe config" });
+    }
+  });
+  
+  // Create Stripe Checkout session for $97 one-time payment
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
+      const stripe = await getUncachableStripeClient();
+      
+      // Get the assessment price from Stripe
+      const pricesResult = await db.execute(
+        sql`SELECT p.id as price_id, pr.id as product_id, pr.name
+            FROM stripe.prices p
+            JOIN stripe.products pr ON p.product = pr.id
+            WHERE pr.name = 'Retirement Readiness Assessment'
+            AND p.active = true
+            LIMIT 1`
+      );
+      
+      let priceId: string;
+      
+      if (pricesResult.rows.length > 0) {
+        priceId = pricesResult.rows[0].price_id as string;
+      } else {
+        // Fallback: create product and price if not found
+        const product = await stripe.products.create({
+          name: 'Retirement Readiness Assessment',
+          description: 'CFP®-designed retirement readiness self-assessment with Monte Carlo simulation and personalized Retirement Readiness Brief.',
+        });
+        
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: 9700,
+          currency: 'usd',
+        });
+        
+        priceId = price.id;
+      }
+      
+      // Create the assessment first (pending payment)
       const assessment = await storage.createAssessment({
-        status: 'paid', // For MVP, skip actual Stripe integration
+        status: 'pending',
         currentStep: 1
       });
       
-      res.json({ assessmentId: assessment.id });
+      // Get the base URL
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers.host || req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+      
+      // Create Stripe Checkout session
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&assessment_id=${assessment.id}`,
+        cancel_url: `${baseUrl}/checkout`,
+        metadata: {
+          assessmentId: assessment.id,
+        },
+      });
+      
+      // Update assessment with Stripe session ID
+      await storage.updateAssessment(assessment.id, {
+        stripeCheckoutSessionId: session.id,
+      });
+      
+      res.json({ url: session.url });
     } catch (error) {
-      console.error("Error creating assessment:", error);
-      res.status(500).json({ message: "Failed to create assessment" });
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+  
+  // Verify payment and redirect to intake
+  app.get("/api/checkout/verify", async (req, res) => {
+    try {
+      const { session_id, assessment_id } = req.query;
+      
+      if (!session_id || !assessment_id) {
+        return res.status(400).json({ message: "Missing session_id or assessment_id" });
+      }
+      
+      // First, verify the assessment exists and has matching session ID
+      const assessment = await storage.getAssessment(assessment_id as string);
+      if (!assessment) {
+        return res.status(404).json({ message: "Assessment not found" });
+      }
+      
+      // Verify the session ID matches what we stored (prevent tampering)
+      if (assessment.stripeCheckoutSessionId !== session_id) {
+        console.error(`Session ID mismatch: expected ${assessment.stripeCheckoutSessionId}, got ${session_id}`);
+        return res.status(400).json({ message: "Invalid session" });
+      }
+      
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(session_id as string);
+      
+      // Verify the session's metadata matches our assessment ID
+      if (session.metadata?.assessmentId !== assessment_id) {
+        console.error(`Assessment ID mismatch in session metadata: expected ${assessment_id}, got ${session.metadata?.assessmentId}`);
+        return res.status(400).json({ message: "Invalid session" });
+      }
+      
+      if (session.payment_status === 'paid') {
+        // Update assessment to paid status with timestamp
+        await storage.updateAssessment(assessment_id as string, {
+          status: 'paid',
+          paidAt: new Date(),
+          customerEmail: session.customer_details?.email || undefined,
+        });
+        
+        res.json({ success: true, assessmentId: assessment_id });
+      } else {
+        res.status(400).json({ message: "Payment not completed" });
+      }
+    } catch (error) {
+      console.error("Error verifying payment:", error);
+      res.status(500).json({ message: "Failed to verify payment" });
     }
   });
   
