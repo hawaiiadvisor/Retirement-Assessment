@@ -8,6 +8,8 @@ import CheckoutPage from "@/pages/CheckoutPage";
 import CheckoutSuccessPage from "@/pages/CheckoutSuccessPage";
 import IntakePage from "@/pages/IntakePage";
 import ResultsPage from "@/pages/ResultsPage";
+import AccessPage from "@/pages/AccessPage";
+import AccessTokenPage from "@/pages/AccessTokenPage";
 
 function Router() {
   return (
@@ -17,6 +19,8 @@ function Router() {
       <Route path="/checkout/success" component={CheckoutSuccessPage} />
       <Route path="/intake/:id" component={IntakePage} />
       <Route path="/results/:id" component={ResultsPage} />
+      <Route path="/access" component={AccessPage} />
+      <Route path="/access/:token" component={AccessTokenPage} />
       <Route component={NotFound} />
     </Switch>
   );

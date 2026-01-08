@@ -7,6 +7,8 @@ import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { generateMagicToken, hashToken, isTokenExpired } from "./magic-token";
+import { sendMagicLinkEmail } from "./email";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -130,12 +132,28 @@ export async function registerRoutes(
       }
       
       if (session.payment_status === 'paid') {
-        // Update assessment to paid status with timestamp
+        const customerEmail = session.customer_details?.email || undefined;
+        
+        // Generate magic token for re-access
+        const { token, hash, expiresAt } = generateMagicToken();
+        
+        // Update assessment to paid status with token
         await storage.updateAssessment(assessment_id as string, {
           status: 'paid',
           paidAt: new Date(),
-          customerEmail: session.customer_details?.email || undefined,
+          customerEmail,
+          magicTokenHash: hash,
+          magicTokenExpiresAt: expiresAt,
         });
+        
+        // Send magic link email if we have an email
+        if (customerEmail) {
+          const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+          const host = req.headers.host || req.get('host');
+          const magicLink = `${protocol}://${host}/access/${token}`;
+          
+          await sendMagicLinkEmail(customerEmail, magicLink, true);
+        }
         
         res.json({ success: true, assessmentId: assessment_id });
       } else {
@@ -223,6 +241,74 @@ export async function registerRoutes(
       }
       
       res.status(500).json({ message: "Failed to submit assessment" });
+    }
+  });
+  
+  // Magic link access - verify token and redirect to assessment
+  app.get("/api/access/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const tokenHash = hashToken(token);
+      
+      const assessment = await storage.getAssessmentByToken(tokenHash);
+      
+      if (!assessment) {
+        return res.status(404).json({ message: "Invalid or expired link" });
+      }
+      
+      if (isTokenExpired(assessment.magicTokenExpiresAt)) {
+        return res.status(400).json({ message: "Link has expired. Please request a new one." });
+      }
+      
+      // Return the assessment ID for redirect
+      res.json({ 
+        assessmentId: assessment.id,
+        status: assessment.status,
+        hasResults: !!assessment.resultsJson
+      });
+    } catch (error) {
+      console.error("Error verifying magic link:", error);
+      res.status(500).json({ message: "Failed to verify link" });
+    }
+  });
+  
+  // Request new magic link by email
+  app.post("/api/access/request", async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+      
+      // Find assessment by email
+      const assessment = await storage.getAssessmentByEmail(email);
+      
+      if (!assessment) {
+        // Don't reveal if email exists or not for security
+        return res.json({ success: true, message: "If an assessment exists for this email, a link has been sent." });
+      }
+      
+      // Generate new magic token
+      const { token, hash, expiresAt } = generateMagicToken();
+      
+      // Update assessment with new token
+      await storage.updateAssessment(assessment.id, {
+        magicTokenHash: hash,
+        magicTokenExpiresAt: expiresAt,
+      });
+      
+      // Send email
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers.host || req.get('host');
+      const magicLink = `${protocol}://${host}/access/${token}`;
+      
+      await sendMagicLinkEmail(email, magicLink, false);
+      
+      res.json({ success: true, message: "If an assessment exists for this email, a link has been sent." });
+    } catch (error) {
+      console.error("Error requesting magic link:", error);
+      res.status(500).json({ message: "Failed to send access link" });
     }
   });
   

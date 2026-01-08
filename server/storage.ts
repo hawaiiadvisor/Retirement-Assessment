@@ -9,6 +9,7 @@ export interface IStorage {
   
   getAssessment(id: string): Promise<Assessment | undefined>;
   getAssessmentByToken(tokenHash: string): Promise<Assessment | undefined>;
+  getAssessmentByEmail(email: string): Promise<Assessment | undefined>;
   createAssessment(assessment: InsertAssessment): Promise<Assessment>;
   updateAssessment(id: string, updates: Partial<InsertAssessment>): Promise<Assessment | undefined>;
 }
@@ -39,6 +40,11 @@ export class DatabaseStorage implements IStorage {
   
   async getAssessmentByToken(tokenHash: string): Promise<Assessment | undefined> {
     const [assessment] = await db.select().from(assessments).where(eq(assessments.magicTokenHash, tokenHash));
+    return assessment || undefined;
+  }
+  
+  async getAssessmentByEmail(email: string): Promise<Assessment | undefined> {
+    const [assessment] = await db.select().from(assessments).where(eq(assessments.customerEmail, email));
     return assessment || undefined;
   }
   

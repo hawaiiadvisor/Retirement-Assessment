@@ -96,6 +96,12 @@ export default function CheckoutPage() {
             This assessment is for educational purposes only and does not provide personalized financial advice.
             Using this tool does not create an advisory relationship.
           </p>
+          
+          <div className="text-center mt-4">
+            <a href="/access" className="text-sm text-primary hover:underline" data-testid="link-access">
+              Already purchased? Access your assessment
+            </a>
+          </div>
         </div>
       </main>
       
