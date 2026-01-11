@@ -1,4 +1,4 @@
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -22,7 +22,8 @@ import {
   Info,
   ExternalLink,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import type { Assessment, ResultsData } from "@shared/schema";
@@ -151,6 +152,7 @@ function LeverCard({ lever, index }: { lever: { title: string; description: stri
 
 export default function ResultsPage() {
   const { id } = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
   
   const { data: assessment, isLoading, error } = useQuery<Assessment>({
     queryKey: ['/api/assessments', id],
@@ -203,6 +205,17 @@ export default function ResultsPage() {
           </div>
           
           <VerdictDisplay verdict={results.verdict} probability={results.success_probability} />
+          
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              onClick={() => setLocation(`/intake/${id}`)}
+              data-testid="button-modify-responses"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Modify My Responses
+            </Button>
+          </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
