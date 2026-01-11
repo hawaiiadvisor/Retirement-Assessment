@@ -111,6 +111,10 @@ export const resultsSchema = z.object({
     retirement_duration_years: z.number(),
     annual_spending_year1: z.number(),
     guaranteed_income_at_start: z.number(),
+    starting_portfolio: z.number(),
+    ss_annual_income: z.number(),
+    pre_ss_withdrawal_rate: z.number(),
+    post_ss_withdrawal_rate: z.number(),
     distribution_data: z.array(z.object({
       range: z.string(),
       count: z.number(),

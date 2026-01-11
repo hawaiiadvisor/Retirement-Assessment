@@ -605,6 +605,22 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
   const year1Spending = calculateAnnualSpending(intake, 0, intake.retirement_age, false, 0);
   const year1GuaranteedIncome = calculateGuaranteedIncome(intake, 0, intake.retirement_age);
   
+  // Calculate Social Security annual income (when it kicks in)
+  const ssAnnualIncome = (!intake.ss_not_sure && intake.ss_monthly_household) 
+    ? intake.ss_monthly_household * 12 
+    : 0;
+  
+  // Calculate withdrawal rates
+  // Pre-SS: spending / total assets (before Social Security kicks in)
+  const preSSWithdrawalRate = startingPortfolio > 0 
+    ? (year1Spending / startingPortfolio) * 100 
+    : 0;
+  
+  // Post-SS: (spending - SS income) / total assets (after Social Security kicks in)
+  const postSSWithdrawalRate = startingPortfolio > 0 
+    ? (Math.max(0, year1Spending - ssAnnualIncome) / startingPortfolio) * 100 
+    : 0;
+  
   // Generate distribution data for chart
   const distributionData = generateDistributionData(endingPortfolios, trials);
   
@@ -631,6 +647,10 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
       retirement_duration_years: duration,
       annual_spending_year1: Math.round(year1Spending),
       guaranteed_income_at_start: Math.round(year1GuaranteedIncome),
+      starting_portfolio: startingPortfolio,
+      ss_annual_income: ssAnnualIncome,
+      pre_ss_withdrawal_rate: Math.round(preSSWithdrawalRate * 10) / 10,
+      post_ss_withdrawal_rate: Math.round(postSSWithdrawalRate * 10) / 10,
       distribution_data: distributionData
     }
   };

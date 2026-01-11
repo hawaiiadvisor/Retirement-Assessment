@@ -29,6 +29,28 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import type { Assessment, ResultsData } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
+function getWithdrawalRateColor(rate: number): { text: string; bg: string; label: string } {
+  if (rate <= 4) {
+    return {
+      text: "text-green-600 dark:text-green-400",
+      bg: "bg-green-100 dark:bg-green-900/50",
+      label: "Safe"
+    };
+  } else if (rate <= 5) {
+    return {
+      text: "text-yellow-600 dark:text-yellow-400",
+      bg: "bg-yellow-100 dark:bg-yellow-900/50",
+      label: "Caution"
+    };
+  } else {
+    return {
+      text: "text-red-600 dark:text-red-400",
+      bg: "bg-red-100 dark:bg-red-900/50",
+      label: "High Risk"
+    };
+  }
+}
+
 function VerdictDisplay({ verdict, probability }: { verdict: string; probability: number }) {
   const config = {
     on_track: {
@@ -356,6 +378,51 @@ export default function ResultsPage() {
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Worst Case</p>
                       <p className="text-2xl font-semibold">${(results.simulation_details.worst_case_portfolio / 1000).toFixed(0)}k</p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="text-sm font-medium mb-4">Withdrawal Rate Analysis</h4>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Your withdrawal rate shows how much of your portfolio you need to withdraw each year relative to your starting assets. 
+                      Generally, 4% or below is considered sustainable for a 30-year retirement.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className={cn("p-4 rounded-lg border", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).bg)}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-medium">Early Retirement Rate</p>
+                          <Badge variant="secondary" className={cn("text-xs", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).text)}>
+                            {getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).label}
+                          </Badge>
+                        </div>
+                        <p className={cn("text-3xl font-bold", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).text)} data-testid="text-pre-ss-withdrawal-rate">
+                          {results.simulation_details.pre_ss_withdrawal_rate.toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Before Social Security begins
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          ${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k / ${(results.simulation_details.starting_portfolio / 1000).toFixed(0)}k
+                        </p>
+                      </div>
+                      
+                      <div className={cn("p-4 rounded-lg border", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).bg)}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-medium">With Social Security</p>
+                          <Badge variant="secondary" className={cn("text-xs", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).text)}>
+                            {getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).label}
+                          </Badge>
+                        </div>
+                        <p className={cn("text-3xl font-bold", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).text)} data-testid="text-post-ss-withdrawal-rate">
+                          {results.simulation_details.post_ss_withdrawal_rate.toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          After ${(results.simulation_details.ss_annual_income / 1000).toFixed(0)}k/yr SS kicks in
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          (${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k - ${(results.simulation_details.ss_annual_income / 1000).toFixed(0)}k) / ${(results.simulation_details.starting_portfolio / 1000).toFixed(0)}k
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
