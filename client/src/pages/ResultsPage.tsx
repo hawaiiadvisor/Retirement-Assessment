@@ -377,6 +377,26 @@ export default function ResultsPage() {
             </AccordionItem>
           </Accordion>
           
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Learn More</CardTitle>
+              <CardDescription>
+                Watch this video to better understand your retirement readiness results.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="aspect-video w-full" data-testid="video-youtube-embed">
+                <iframe
+                  className="w-full h-full rounded-lg"
+                  src="https://www.youtube.com/embed/wRWLMOUij2E"
+                  title="Retirement Readiness"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </CardContent>
+          </Card>
+          
           <Card className="bg-muted/30">
             <CardHeader>
               <CardTitle className="text-base">Want to explore further?</CardTitle>
