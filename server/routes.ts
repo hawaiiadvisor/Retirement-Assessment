@@ -137,6 +137,11 @@ export async function registerRoutes(
         // Generate magic token for re-access
         const { token, hash, expiresAt } = generateMagicToken();
         
+        // Build magic link URL
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = req.headers.host || req.get('host');
+        const magicLink = `${protocol}://${host}/access/${token}`;
+        
         // Update assessment to paid status with token
         await storage.updateAssessment(assessment_id as string, {
           status: 'paid',
@@ -148,14 +153,11 @@ export async function registerRoutes(
         
         // Send magic link email if we have an email
         if (customerEmail) {
-          const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-          const host = req.headers.host || req.get('host');
-          const magicLink = `${protocol}://${host}/access/${token}`;
-          
           await sendMagicLinkEmail(customerEmail, magicLink, true);
         }
         
-        res.json({ success: true, assessmentId: assessment_id });
+        // Return magic link so user can save it
+        res.json({ success: true, assessmentId: assessment_id, magicLink });
       } else {
         res.status(400).json({ message: "Payment not completed" });
       }
