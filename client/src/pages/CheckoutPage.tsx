@@ -6,6 +6,7 @@ import { Check, Shield, ArrowRight } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import advisorImage from "@assets/Financial_advisor_1771140630199.jpg";
 
 const PRODUCT_NAME = "Retirement Readiness Assessment";
 
@@ -45,6 +46,12 @@ export default function CheckoutPage() {
             <p className="text-muted-foreground mt-3 text-lg">
               A CFP®-designed retirement readiness assessment
             </p>
+            <img
+              src={advisorImage}
+              alt="Financial advisor consulting with client"
+              className="mt-6 rounded-md w-full object-cover max-h-56"
+              data-testid="img-advisor"
+            />
           </div>
 
           <Card>
@@ -57,7 +64,7 @@ export default function CheckoutPage() {
 
             <CardContent className="space-y-6">
               <div className="text-center py-4">
-                <span className="text-3xl font-semibold tracking-tight text-primary">100% Free</span>
+                <span className="text-3xl font-semibold tracking-tight text-primary">Free</span>
               </div>
 
               <ul className="space-y-3">
@@ -76,7 +83,7 @@ export default function CheckoutPage() {
                 disabled={createAssessmentMutation.isPending}
                 data-testid="button-start-assessment"
               >
-                {createAssessmentMutation.isPending ? "Starting..." : "Start Free Assessment"}
+                {createAssessmentMutation.isPending ? "Starting..." : "Start Assessment"}
                 {!createAssessmentMutation.isPending && <ArrowRight className="h-4 w-4 ml-2" />}
               </Button>
 
