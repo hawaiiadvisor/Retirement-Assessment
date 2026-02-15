@@ -36,7 +36,13 @@ export default function CheckoutPage() {
       }
     },
     onError: (error: Error) => {
+      console.error("Assessment creation failed:", error.message);
       if (error.message.includes("401")) {
+        toast({
+          title: "Session expired",
+          description: "Please log in again to continue.",
+          variant: "destructive",
+        });
         setLocation("/login");
       } else {
         toast({
@@ -45,10 +51,11 @@ export default function CheckoutPage() {
           variant: "destructive",
         });
       }
-    }
+    },
+    retry: 1,
   });
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!user) {
       setLocation("/register");
       return;

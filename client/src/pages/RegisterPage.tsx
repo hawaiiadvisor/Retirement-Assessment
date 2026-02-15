@@ -18,12 +18,13 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && !isSubmitting) {
       setLocation("/");
     }
-  }, [user, setLocation]);
+  }, [user, setLocation, isSubmitting]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +41,7 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+    setIsSubmitting(true);
     try {
       await register(email, password);
       try {
@@ -63,6 +65,7 @@ export default function RegisterPage() {
       }
     } finally {
       setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
