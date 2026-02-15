@@ -125,12 +125,39 @@ export const resultsSchema = z.object({
 
 export type ResultsData = z.infer<typeof resultsSchema>;
 
+// User accounts table
+export const userAccounts = pgTable("user_accounts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUserAccountSchema = createInsertSchema(userAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUserAccount = z.infer<typeof insertUserAccountSchema>;
+export type UserAccount = typeof userAccounts.$inferSelect;
+
+export const registerSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
 // Database table
 export const assessments = pgTable("assessments", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   status: text("status").notNull().default('draft'),
+  userId: varchar("user_id", { length: 36 }),
   customerEmail: text("customer_email"),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   paidAt: timestamp("paid_at"),

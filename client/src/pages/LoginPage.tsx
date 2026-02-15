@@ -1,0 +1,128 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation, Link } from "wouter";
+
+export default function LoginPage() {
+  const { login, user } = useAuth();
+  const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (user) {
+    setLocation("/");
+    return null;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      await login(email, password);
+      setLocation("/");
+    } catch (err: any) {
+      const msg = err.message || "Login failed";
+      const cleaned = msg.replace(/^\d+:\s*/, "").replace(/^"(.*)"$/, "$1");
+      try {
+        const parsed = JSON.parse(cleaned);
+        setError(parsed.message || "Invalid email or password");
+      } catch {
+        setError(cleaned);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+
+      <main className="flex-1 py-12 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-6 w-full">
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Welcome Back</CardTitle>
+              <CardDescription>
+                Log in to access your retirement assessment
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    data-testid="input-login-email"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    data-testid="input-login-password"
+                  />
+                </div>
+
+                {error && (
+                  <p className="text-sm text-destructive text-center" data-testid="text-login-error">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading}
+                  data-testid="button-login-submit"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Logging in...
+                    </>
+                  ) : (
+                    "Log In"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <div className="text-center mt-6">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                Create one
+              </Link>
+            </p>
+          </div>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

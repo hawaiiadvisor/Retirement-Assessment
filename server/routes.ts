@@ -1,56 +1,138 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { intakeSchema } from "@shared/schema";
+import { intakeSchema, registerSchema, loginSchema } from "@shared/schema";
 import { runMonteCarloSimulation } from "./simulation";
 import { z } from "zod";
-import { generateMagicToken, hashToken, isTokenExpired } from "./magic-token";
-import { sendMagicLinkEmail } from "./email";
+import bcrypt from "bcrypt";
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ message: "Please log in to continue" });
+  }
+  next();
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  app.post("/api/assessments", async (req, res) => {
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email } = req.body;
+      const { email, password } = registerSchema.parse(req.body);
+
+      const existing = await storage.getUserAccountByEmail(email);
+      if (existing) {
+        return res.status(400).json({ message: "An account with this email already exists" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const account = await storage.createUserAccount({ email, passwordHash });
+
+      req.session.userId = account.id;
+
+      res.json({ id: account.id, email: account.email });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Error registering:", error);
+      res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = loginSchema.parse(req.body);
+
+      const account = await storage.getUserAccountByEmail(email);
+      if (!account) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const valid = await bcrypt.compare(password, account.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      req.session.userId = account.id;
+
+      res.json({ id: account.id, email: account.email });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Error logging in:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Not logged in" });
+    }
+
+    const account = await storage.getUserAccountById(req.session.userId);
+    if (!account) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ message: "Account not found" });
+    }
+
+    res.json({ id: account.id, email: account.email });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      res.clearCookie("connect.sid");
+      res.json({ success: true });
+    });
+  });
+
+  app.post("/api/assessments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const account = await storage.getUserAccountById(userId);
 
       const assessment = await storage.createAssessment({
         status: 'draft',
         currentStep: 1,
-        customerEmail: email || null
+        userId,
+        customerEmail: account?.email || null
       });
 
-      const { token, hash, expiresAt } = generateMagicToken();
-
-      await storage.updateAssessment(assessment.id, {
-        magicTokenHash: hash,
-        magicTokenExpiresAt: expiresAt,
-      });
-
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const host = req.headers.host || req.get('host');
-      const magicLink = `${protocol}://${host}/access/${token}`;
-
-      if (email) {
-        await sendMagicLinkEmail(email, magicLink, true);
-      }
-
-      res.json({ assessmentId: assessment.id, magicLink });
+      res.json({ assessmentId: assessment.id });
     } catch (error) {
       console.error("Error creating assessment:", error);
       res.status(500).json({ message: "Failed to create assessment" });
     }
   });
 
-  app.get("/api/assessments/:id", async (req, res) => {
+  app.get("/api/assessments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userAssessments = await storage.getAssessmentsByUserId(userId);
+      res.json(userAssessments);
+    } catch (error) {
+      console.error("Error fetching assessments:", error);
+      res.status(500).json({ message: "Failed to fetch assessments" });
+    }
+  });
+
+  app.get("/api/assessments/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const assessment = await storage.getAssessment(id);
 
       if (!assessment) {
         return res.status(404).json({ message: "Assessment not found" });
+      }
+
+      if (assessment.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       res.json(assessment);
@@ -60,7 +142,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/assessments/:id", async (req, res) => {
+  app.patch("/api/assessments/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { intakeJson, currentStep } = req.body;
@@ -68,6 +150,10 @@ export async function registerRoutes(
       const assessment = await storage.getAssessment(id);
       if (!assessment) {
         return res.status(404).json({ message: "Assessment not found" });
+      }
+
+      if (assessment.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       const updated = await storage.updateAssessment(id, {
@@ -82,7 +168,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/assessments/:id/submit", async (req, res) => {
+  app.post("/api/assessments/:id/submit", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { intakeData } = req.body;
@@ -92,8 +178,11 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Assessment not found" });
       }
 
-      const validatedIntake = intakeSchema.parse(intakeData);
+      if (assessment.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
 
+      const validatedIntake = intakeSchema.parse(intakeData);
       const results = runMonteCarloSimulation(validatedIntake);
 
       await storage.updateAssessment(id, {
@@ -114,66 +203,6 @@ export async function registerRoutes(
       }
 
       res.status(500).json({ message: "Failed to submit assessment" });
-    }
-  });
-
-  app.get("/api/access/:token", async (req, res) => {
-    try {
-      const { token } = req.params;
-      const tokenHash = hashToken(token);
-
-      const assessment = await storage.getAssessmentByToken(tokenHash);
-
-      if (!assessment) {
-        return res.status(404).json({ message: "Invalid or expired link" });
-      }
-
-      if (isTokenExpired(assessment.magicTokenExpiresAt)) {
-        return res.status(400).json({ message: "Link has expired. Please request a new one." });
-      }
-
-      res.json({
-        assessmentId: assessment.id,
-        status: assessment.status,
-        hasResults: !!assessment.resultsJson
-      });
-    } catch (error) {
-      console.error("Error verifying magic link:", error);
-      res.status(500).json({ message: "Failed to verify link" });
-    }
-  });
-
-  app.post("/api/access/request", async (req, res) => {
-    try {
-      const { email } = req.body;
-
-      if (!email) {
-        return res.status(400).json({ message: "Email is required" });
-      }
-
-      const assessment = await storage.getAssessmentByEmail(email);
-
-      if (!assessment) {
-        return res.json({ success: true, message: "If an assessment exists for this email, a link has been sent." });
-      }
-
-      const { token, hash, expiresAt } = generateMagicToken();
-
-      await storage.updateAssessment(assessment.id, {
-        magicTokenHash: hash,
-        magicTokenExpiresAt: expiresAt,
-      });
-
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const host = req.headers.host || req.get('host');
-      const magicLink = `${protocol}://${host}/access/${token}`;
-
-      await sendMagicLinkEmail(email, magicLink, false);
-
-      res.json({ success: true, message: "If an assessment exists for this email, a link has been sent." });
-    } catch (error) {
-      console.error("Error requesting magic link:", error);
-      res.status(500).json({ message: "Failed to send access link" });
     }
   });
 

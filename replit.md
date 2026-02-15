@@ -42,11 +42,18 @@ Preferred communication style: Simple, everyday language.
 3. Server runs Monte Carlo simulation on submission
 4. Results page displays verdict, probability, risks, and recommendations
 
+### Authentication
+- **User Accounts**: Email/password registration and login
+- **Password Security**: bcrypt with 12 rounds for password hashing
+- **Session Management**: express-session with connect-pg-simple for PostgreSQL-backed sessions
+- **Session Config**: httpOnly cookies, 7-day expiry, secure in production
+
 ### Key Design Decisions
-- **No User Accounts**: Magic-link access only for simplicity
+- **User Accounts**: Email/password authentication (replaced magic-link access)
 - **Free Access**: No payment required - assessment is completely free
 - **Shared Types**: TypeScript types shared between client and server via `@shared/` alias
 - **Progressive Save**: Intake form saves progress after each step
+- **Assessment Ownership**: Assessments linked to user accounts via userId foreign key
 
 ## External Dependencies
 
@@ -77,6 +84,14 @@ Preferred communication style: Simple, everyday language.
 - Cleaned up server/index.ts to remove Stripe initialization and webhook handling
 - Updated routes to use simple POST /api/assessments for assessment creation
 - Updated replit.md to reflect free model
+
+### Email/Password Authentication
+- Added user_accounts table with email and hashed password fields
+- Implemented registration, login, logout, and session check endpoints
+- Built RegisterPage and LoginPage with form validation
+- Updated Header to show user email and logout button when authenticated
+- Linked assessments to user accounts via userId foreign key
+- Removed old magic-link access flow (AccessPage, AccessTokenPage deleted)
 
 ### Application Status
 - All 7 intake wizard steps functional

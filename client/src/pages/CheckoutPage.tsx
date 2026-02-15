@@ -2,10 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { Check, Shield, ArrowRight } from "lucide-react";
+import { Check, Shield, ArrowRight, Loader2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import advisorImage from "@assets/Financial_advisor_1771140630199.jpg";
 
 const PRODUCT_NAME = "Retirement Readiness Assessment";
@@ -20,11 +21,12 @@ const features = [
 
 export default function CheckoutPage() {
   const [, setLocation] = useLocation();
+  const { user, isLoading: authLoading } = useAuth();
 
   const createAssessmentMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/assessments', {});
-      return await response.json() as { assessmentId: string; magicLink: string };
+      return await response.json() as { assessmentId: string };
     },
     onSuccess: (data) => {
       if (data.assessmentId) {
@@ -32,6 +34,22 @@ export default function CheckoutPage() {
       }
     }
   });
+
+  const handleStart = () => {
+    if (!user) {
+      setLocation("/register");
+      return;
+    }
+    createAssessmentMutation.mutate();
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -79,12 +97,21 @@ export default function CheckoutPage() {
               <Button
                 size="lg"
                 className="w-full"
-                onClick={() => createAssessmentMutation.mutate()}
+                onClick={handleStart}
                 disabled={createAssessmentMutation.isPending}
                 data-testid="button-start-assessment"
               >
-                {createAssessmentMutation.isPending ? "Starting..." : "Start Assessment"}
-                {!createAssessmentMutation.isPending && <ArrowRight className="h-4 w-4 ml-2" />}
+                {createAssessmentMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    Start Assessment
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </>
+                )}
               </Button>
 
               <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-2">
@@ -101,11 +128,13 @@ export default function CheckoutPage() {
             Using this tool does not create an advisory relationship.
           </p>
 
-          <div className="text-center mt-4">
-            <a href="/access" className="text-sm text-primary hover:underline" data-testid="link-access">
-              Already started? Access your assessment
-            </a>
-          </div>
+          {!user && (
+            <div className="text-center mt-4">
+              <a href="/login" className="text-sm text-primary hover:underline" data-testid="link-login">
+                Already have an account? Log in
+              </a>
+            </div>
+          )}
         </div>
       </main>
 
