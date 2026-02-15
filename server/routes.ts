@@ -115,6 +115,12 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const account = await storage.getUserAccountById(userId);
 
+      const existing = await storage.getAssessmentsByUserId(userId);
+      const draft = existing.find(a => a.status === 'draft');
+      if (draft) {
+        return res.json({ assessmentId: draft.id });
+      }
+
       const assessment = await storage.createAssessment({
         status: 'draft',
         currentStep: 1,
