@@ -1,4 +1,4 @@
-// Kit (ConvertKit) API integration
+// Kit (ConvertKit) API integration - v3 API
 const KIT_API_URL = 'https://api.convertkit.com/v3';
 
 function getApiSecret(): string | null {
@@ -36,6 +36,7 @@ export async function addSubscriber(email: string, fields?: Record<string, strin
     if (!res.ok) {
       const text = await res.text();
       console.error(`[Kit] Failed to add subscriber ${email}: ${res.status} ${text}`);
+      console.error(`[Kit] Check that KIT_FORM_ID (${formId}) is a valid numeric form ID from your Kit account`);
       return;
     }
 
