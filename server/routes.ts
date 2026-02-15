@@ -5,6 +5,8 @@ import { intakeSchema, registerSchema, loginSchema } from "@shared/schema";
 import { runMonteCarloSimulation } from "./simulation";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import { appendAssessmentToSheet } from "./googleSheets";
+import { addSubscriber, tagSubscriber } from "./kit";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
@@ -31,6 +33,8 @@ export async function registerRoutes(
       const account = await storage.createUserAccount({ email, passwordHash });
 
       req.session.userId = account.id;
+
+      addSubscriber(email).catch(err => console.error('[Kit] Background subscriber add failed:', err));
 
       res.json({ id: account.id, email: account.email });
     } catch (error) {
@@ -190,6 +194,20 @@ export async function registerRoutes(
         intakeJson: validatedIntake,
         resultsJson: results
       });
+
+      const email = assessment.customerEmail || '';
+      if (email) {
+        appendAssessmentToSheet({
+          email,
+          intakeJson: validatedIntake,
+          resultsJson: results
+        }).catch(err => console.error('[GoogleSheets] Background append failed:', err));
+
+        const kitTagId = process.env.KIT_TAG_ID;
+        if (kitTagId) {
+          tagSubscriber(email, kitTagId).catch(err => console.error('[Kit] Background tag failed:', err));
+        }
+      }
 
       res.json({ success: true });
     } catch (error) {

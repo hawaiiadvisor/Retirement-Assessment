@@ -73,6 +73,10 @@ Preferred communication style: Simple, everyday language.
 
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
+- `GOOGLE_SHEET_ID`: (Optional) Google Sheet ID for assessment data. Auto-creates if not set.
+- `KIT_API_SECRET`: Kit (ConvertKit) API secret for subscriber management
+- `KIT_FORM_ID`: Kit form ID to subscribe new users to
+- `KIT_TAG_ID`: (Optional) Kit tag ID to apply when assessment is completed
 
 ## Recent Changes (February 2026)
 
@@ -93,9 +97,18 @@ Preferred communication style: Simple, everyday language.
 - Linked assessments to user accounts via userId foreign key
 - Removed old magic-link access flow (AccessPage, AccessTokenPage deleted)
 
+### Google Sheets & Kit Integration
+- Added Google Sheets integration to automatically log completed assessments
+- Auto-creates "Retirement Assessment Responses" spreadsheet if GOOGLE_SHEET_ID not set
+- Added Kit (ConvertKit) integration to add subscribers on registration
+- Kit tagging on assessment completion (optional via KIT_TAG_ID)
+- Both integrations run in background and won't block the user experience
+
 ### Application Status
 - All 7 intake wizard steps functional
 - Monte Carlo simulation (3,000 trials) working
 - Results page displays verdict, probability, risks, and recommendations
 - PostgreSQL persistence operational
 - Free access - no payment required
+- Google Sheets data export on assessment completion
+- Kit subscriber sync on user registration
