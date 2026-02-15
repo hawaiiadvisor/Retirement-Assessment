@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 const PRODUCT_NAME = "Retirement Readiness Assessment";
 
 const features = [
-  "Comprehensive intake questionnaire designed by a CFP\u00ae",
+  "Comprehensive intake questionnaire designed by a CFP®",
   "Monte Carlo simulation with 3,000+ scenarios",
   "Personalized Retirement Readiness Brief",
   "Top 3 risks and levers specific to your situation",
@@ -43,7 +43,7 @@ export default function CheckoutPage() {
               Ready to Retire?
             </h1>
             <p className="text-muted-foreground mt-3 text-lg">
-              A CFP\u00ae-designed retirement readiness assessment
+              A CFP®-designed retirement readiness assessment
             </p>
           </div>
 
@@ -57,7 +57,7 @@ export default function CheckoutPage() {
 
             <CardContent className="space-y-6">
               <div className="text-center py-4">
-                <span className="text-3xl font-semibold tracking-tight text-primary">Free</span>
+                <span className="text-3xl font-semibold tracking-tight text-primary">100% Free</span>
               </div>
 
               <ul className="space-y-3">
