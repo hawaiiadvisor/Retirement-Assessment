@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Assessment status enum
-export type AssessmentStatus = 'draft' | 'paid' | 'submitted';
+export type AssessmentStatus = 'draft' | 'submitted';
 
 // Intake question types as Zod schemas for validation
 export const planningForSchema = z.enum(['self', 'couple']);

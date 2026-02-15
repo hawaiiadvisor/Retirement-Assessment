@@ -111,7 +111,7 @@ export default function AccessPage() {
           <div className="text-center mt-6">
             <p className="text-sm text-muted-foreground">
               Don't have an assessment yet?{" "}
-              <Link href="/checkout" className="text-primary hover:underline">
+              <Link href="/" className="text-primary hover:underline">
                 Start here
               </Link>
             </p>
