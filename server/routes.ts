@@ -116,9 +116,10 @@ export async function registerRoutes(
       const account = await storage.getUserAccountById(userId);
 
       const existing = await storage.getAssessmentsByUserId(userId);
-      const draft = existing.find(a => a.status === 'draft');
-      if (draft) {
-        return res.json({ assessmentId: draft.id });
+      const drafts = existing.filter(a => a.status === 'draft');
+      if (drafts.length > 0) {
+        drafts.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        return res.json({ assessmentId: drafts[0].id });
       }
 
       const assessment = await storage.createAssessment({
