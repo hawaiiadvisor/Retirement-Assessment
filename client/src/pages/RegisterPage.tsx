@@ -8,6 +8,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function RegisterPage() {
   const { register, user } = useAuth();
@@ -41,6 +42,15 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(email, password);
+      try {
+        const res = await apiRequest('POST', '/api/assessments', {});
+        const data = await res.json() as { assessmentId: string };
+        if (data.assessmentId) {
+          setLocation(`/intake/${data.assessmentId}`);
+          return;
+        }
+      } catch {
+      }
       setLocation("/");
     } catch (err: any) {
       const msg = err.message || "Registration failed";
