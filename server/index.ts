@@ -27,6 +27,7 @@ export function log(message: string, source = "express") {
 }
 
 (async () => {
+  app.set("trust proxy", 1);
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
 
@@ -40,8 +41,9 @@ export function log(message: string, source = "express") {
       secret: process.env.SESSION_SECRET || "fallback-dev-secret",
       resave: false,
       saveUninitialized: false,
+      proxy: true,
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: "auto",
         httpOnly: true,
         maxAge: 30 * 24 * 60 * 60 * 1000,
         sameSite: "lax",
