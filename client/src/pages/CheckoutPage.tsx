@@ -7,6 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import advisorImage from "@assets/Financial_advisor_1771140630199.jpg";
 
 const PRODUCT_NAME = "Retirement Readiness Assessment";
@@ -22,6 +23,7 @@ const features = [
 export default function CheckoutPage() {
   const [, setLocation] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
 
   const createAssessmentMutation = useMutation({
     mutationFn: async () => {
@@ -31,6 +33,17 @@ export default function CheckoutPage() {
     onSuccess: (data) => {
       if (data.assessmentId) {
         setLocation(`/intake/${data.assessmentId}`);
+      }
+    },
+    onError: (error: Error) => {
+      if (error.message.includes("401")) {
+        setLocation("/login");
+      } else {
+        toast({
+          title: "Something went wrong",
+          description: "Could not start the assessment. Please try again.",
+          variant: "destructive",
+        });
       }
     }
   });

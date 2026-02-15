@@ -36,6 +36,13 @@ export async function registerRoutes(
 
       addSubscriber(email).catch(err => console.error('[Kit] Background subscriber add failed:', err));
 
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
       res.json({ id: account.id, email: account.email });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -61,6 +68,13 @@ export async function registerRoutes(
       }
 
       req.session.userId = account.id;
+
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
 
       res.json({ id: account.id, email: account.email });
     } catch (error) {
