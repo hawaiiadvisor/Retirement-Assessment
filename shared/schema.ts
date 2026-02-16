@@ -1,12 +1,7 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Assessment status enum
 export type AssessmentStatus = 'draft' | 'submitted';
 
-// Intake question types as Zod schemas for validation
 export const planningForSchema = z.enum(['self', 'couple']);
 export const retireSameTimeSchema = z.enum(['same', 'spouse_longer', 'spouse_earlier', 'not_sure']);
 export const lifeExpectancySchema = z.enum(['early_80s', 'mid_80s', 'late_80s', '90_plus', 'not_sure']);
@@ -22,9 +17,7 @@ export const marketStressResponseSchema = z.enum(['cash_1_2_years', 'reduce_spen
 export const pre65HealthcareSchema = z.enum(['no', 'yes', 'not_sure']);
 export const yesNoNotSureSchema = z.enum(['yes', 'no', 'not_sure']);
 
-// Full intake JSON schema with sensible defaults
 export const intakeSchema = z.object({
-  // Step 1: Household & Timing
   planning_for: planningForSchema,
   user_age: z.number().min(18).max(100),
   spouse_age: z.number().min(18).max(100).optional(),
@@ -32,13 +25,11 @@ export const intakeSchema = z.object({
   flexibility_score: z.number().min(0).max(10).default(5),
   retire_same_time: retireSameTimeSchema.optional(),
   
-  // Step 2: Life Expectancy & LTC
   user_life_expectancy: lifeExpectancySchema,
   spouse_life_expectancy: lifeExpectancySchema.optional(),
   ltc_expectation: ltcExpectationSchema,
   ltc_insurance: ltcInsuranceSchema,
   
-  // Step 3: Spending
   monthly_spending_ex_mortgage: z.number().min(0),
   has_mortgage: z.boolean().default(false),
   mortgage_monthly: z.number().min(0).optional(),
@@ -50,7 +41,6 @@ export const intakeSchema = z.object({
   spending_confidence: z.number().min(0).max(10).default(5),
   early_spending_pattern: earlySpendingPatternSchema,
   
-  // Step 4: Guaranteed Income
   ss_claim_age: z.number().min(62).max(70).nullable().default(null),
   ss_monthly_household: z.number().min(0).nullable().default(null),
   ss_not_sure: z.boolean().default(false),
@@ -64,16 +54,13 @@ export const intakeSchema = z.object({
   rental_end_age: z.union([z.number().min(50).max(100), z.literal('ongoing')]).optional(),
   rental_reliability: incomeReliabilitySchema.optional(),
   
-  // Step 5: Portfolio
   assets_bucket: assetsBucketSchema,
   allocation_bucket: allocationBucketSchema,
   diversification_confidence: z.number().min(0).max(10).default(5),
   
-  // Step 6: Stress & Behavior
   bridge_years: bridgeYearsSchema,
   market_stress_response: marketStressResponseSchema,
   
-  // Step 7: Psychology & Acknowledgment
   worries_free_text: z.string().max(2000).optional(),
   regret_tradeoff: z.string().max(2000).optional(),
   readiness_feel: z.number().min(0).max(10).default(5),
@@ -84,7 +71,6 @@ export const intakeSchema = z.object({
 
 export type IntakeData = z.infer<typeof intakeSchema>;
 
-// Results schema
 export const resultsSchema = z.object({
   verdict: z.enum(['on_track', 'borderline', 'at_risk']),
   success_probability: z.number().min(0).max(100),
@@ -124,72 +110,3 @@ export const resultsSchema = z.object({
 });
 
 export type ResultsData = z.infer<typeof resultsSchema>;
-
-// User accounts table
-export const userAccounts = pgTable("user_accounts", {
-  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertUserAccountSchema = createInsertSchema(userAccounts).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type InsertUserAccount = z.infer<typeof insertUserAccountSchema>;
-export type UserAccount = typeof userAccounts.$inferSelect;
-
-export const registerSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-});
-
-export const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
-});
-
-// Database table
-export const assessments = pgTable("assessments", {
-  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  status: text("status").notNull().default('draft'),
-  userId: varchar("user_id", { length: 36 }),
-  customerEmail: text("customer_email"),
-  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
-  paidAt: timestamp("paid_at"),
-  intakeJson: jsonb("intake_json"),
-  resultsJson: jsonb("results_json"),
-  logicVersion: text("logic_version").default('1.0'),
-  rulesetVersion: text("ruleset_version").default('1.0'),
-  magicTokenHash: text("magic_token_hash"),
-  magicTokenExpiresAt: timestamp("magic_token_expires_at"),
-  currentStep: integer("current_step").default(1)
-});
-
-export const insertAssessmentSchema = createInsertSchema(assessments).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-
-export type InsertAssessment = z.infer<typeof insertAssessmentSchema>;
-export type Assessment = typeof assessments.$inferSelect;
-
-// Keep legacy users table for compatibility
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;

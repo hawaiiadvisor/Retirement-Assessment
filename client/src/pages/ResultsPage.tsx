@@ -1,5 +1,4 @@
-import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,13 +20,13 @@ import {
   Lightbulb,
   Info,
   ExternalLink,
-  Loader2,
   AlertCircle,
   ChevronLeft
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import type { Assessment, ResultsData } from "@shared/schema";
+import type { ResultsData } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { useAssessment } from "@/hooks/use-assessment";
 
 function getWithdrawalRateColor(rate: number): { text: string; bg: string; label: string } {
   if (rate <= 4) {
@@ -173,23 +172,10 @@ function LeverCard({ lever, index }: { lever: { title: string; description: stri
 }
 
 export default function ResultsPage() {
-  const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const { results } = useAssessment();
   
-  const { data: assessment, isLoading, error } = useQuery<Assessment>({
-    queryKey: ['/api/assessments', id],
-    enabled: !!id
-  });
-  
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-  
-  if (error || !assessment?.resultsJson) {
+  if (!results) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -199,8 +185,15 @@ export default function ResultsPage() {
               <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h2 className="text-lg font-semibold">Results Not Available</h2>
               <p className="text-muted-foreground mt-2">
-                We couldn't find your results. This may be because the assessment hasn't been completed yet.
+                Please complete the assessment first to see your results.
               </p>
+              <Button
+                className="mt-4"
+                onClick={() => setLocation("/intake")}
+                data-testid="button-go-to-intake"
+              >
+                Start Assessment
+              </Button>
             </CardContent>
           </Card>
         </main>
@@ -208,8 +201,6 @@ export default function ResultsPage() {
       </div>
     );
   }
-  
-  const results = assessment.resultsJson as ResultsData;
   
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -231,7 +222,7 @@ export default function ResultsPage() {
           <div className="flex justify-center">
             <Button
               variant="outline"
-              onClick={() => setLocation(`/intake/${id}`)}
+              onClick={() => setLocation("/intake")}
               data-testid="button-modify-responses"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
@@ -468,7 +459,7 @@ export default function ResultsPage() {
             <CardHeader>
               <CardTitle className="text-base">Want to explore further?</CardTitle>
               <CardDescription>
-                If you'd like help reviewing this in more depth with a CFP®, you can schedule a consultation.
+                If you'd like help reviewing this in more depth with a CFP, you can schedule a consultation.
               </CardDescription>
             </CardHeader>
             <CardContent>
