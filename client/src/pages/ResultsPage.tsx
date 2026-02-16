@@ -446,7 +446,7 @@ export default function ResultsPage() {
               <div className="aspect-video w-full" data-testid="video-youtube-embed">
                 <iframe
                   className="w-full h-full rounded-lg"
-                  src="https://www.youtube.com/embed/wRWLMOUij2E"
+                  src="https://www.youtube.com/embed/OBRxpqbi3yo"
                   title="Retirement Readiness"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
