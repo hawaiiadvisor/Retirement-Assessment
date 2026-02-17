@@ -189,7 +189,7 @@ export default function ResultsPage() {
               </p>
               <Button
                 className="mt-4"
-                onClick={() => setLocation("/intake")}
+                onClick={() => setLocation("/")}
                 data-testid="button-go-to-intake"
               >
                 Start Assessment
@@ -222,7 +222,7 @@ export default function ResultsPage() {
           <div className="flex justify-center">
             <Button
               variant="outline"
-              onClick={() => setLocation("/intake")}
+              onClick={() => setLocation("/")}
               data-testid="button-modify-responses"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
