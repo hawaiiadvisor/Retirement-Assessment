@@ -21,12 +21,29 @@ import {
   Info,
   ExternalLink,
   AlertCircle,
-  ChevronLeft
+  ChevronLeft,
+  Shield,
+  DollarSign,
+  Clock,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  AreaChart, Area, CartesianGrid, Legend,
+  ComposedChart, Line
+} from "recharts";
 import type { ResultsData } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { useAssessment } from "@/hooks/use-assessment";
+
+function formatDollars(value: number): string {
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `$${Math.round(value / 1000)}k`;
+  return `$${Math.round(value)}`;
+}
 
 function getWithdrawalRateColor(rate: number): { text: string; bg: string; label: string } {
   if (rate <= 4) {
@@ -113,7 +130,260 @@ function VerdictDisplay({ verdict, probability }: { verdict: string; probability
   );
 }
 
-function RiskCard({ risk, index }: { risk: { title: string; description: string; severity: string }; index: number }) {
+function NarrativeSummary({ narrative }: { narrative: string }) {
+  return (
+    <Card className="bg-muted/20 border-dashed">
+      <CardContent className="pt-6 pb-6">
+        <p className="text-sm leading-relaxed text-foreground/90" data-testid="text-narrative">
+          {narrative}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function KeyMetricsRow({ details }: { details: ResultsData['simulation_details'] }) {
+  const preSSColor = getWithdrawalRateColor(details.pre_ss_withdrawal_rate);
+  const postSSColor = getWithdrawalRateColor(details.post_ss_withdrawal_rate);
+  const floorPct = details.income_floor_coverage_pct ?? 0;
+  const floorColor = floorPct >= 60 ? "text-green-600 dark:text-green-400" 
+    : floorPct >= 30 ? "text-yellow-600 dark:text-yellow-400" 
+    : "text-red-600 dark:text-red-400";
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Duration</p>
+          </div>
+          <p className="text-2xl font-semibold" data-testid="text-duration">{details.retirement_duration_years} yrs</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Starting Portfolio</p>
+          </div>
+          <p className="text-2xl font-semibold" data-testid="text-portfolio">{formatDollars(details.starting_portfolio)}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Year 1 Withdrawal</p>
+          </div>
+          <p className={cn("text-2xl font-semibold", preSSColor.text)} data-testid="text-pre-ss-withdrawal-rate">
+            {details.pre_ss_withdrawal_rate.toFixed(1)}%
+          </p>
+          <Badge variant="secondary" className={cn("text-xs mt-1", preSSColor.text)}>{preSSColor.label}</Badge>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">With SS</p>
+          </div>
+          <p className={cn("text-2xl font-semibold", postSSColor.text)} data-testid="text-post-ss-withdrawal-rate">
+            {details.post_ss_withdrawal_rate.toFixed(1)}%
+          </p>
+          <Badge variant="secondary" className={cn("text-xs mt-1", postSSColor.text)}>{postSSColor.label}</Badge>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Income Floor</p>
+          </div>
+          <p className={cn("text-2xl font-semibold", floorColor)} data-testid="text-income-floor">
+            {floorPct}%
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">of spending covered</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function TrajectoryChart({ data }: { data: ResultsData['trajectory_percentiles'] }) {
+  if (!data || data.length === 0) return null;
+
+  const bandData = data.map(d => ({
+    age: d.age,
+    p10: d.p10,
+    band_10_25: Math.max(0, d.p25 - d.p10),
+    band_25_50: Math.max(0, d.p50 - d.p25),
+    band_50_75: Math.max(0, d.p75 - d.p50),
+    band_75_90: Math.max(0, d.p90 - d.p75),
+    p50: d.p50
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Portfolio Trajectory</CardTitle>
+        <CardDescription>
+          How your portfolio could perform across {data.length > 0 ? data.length - 1 : 0} years of retirement (percentile bands)
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="h-72" data-testid="chart-trajectory">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={bandData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis 
+                dataKey="age" 
+                tick={{ fontSize: 11 }}
+                label={{ value: 'Age', position: 'insideBottom', offset: -5, fontSize: 11 }}
+              />
+              <YAxis 
+                tickFormatter={(v) => formatDollars(v)}
+                tick={{ fontSize: 11 }}
+                width={55}
+              />
+              <Tooltip 
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || !label) return null;
+                  const d = data.find(p => p.age === label);
+                  if (!d) return null;
+                  return (
+                    <div className="bg-popover border rounded-lg p-3 shadow-md text-xs">
+                      <p className="font-medium mb-1">Age {label}</p>
+                      <p>90th: {formatDollars(d.p90)}</p>
+                      <p>75th: {formatDollars(d.p75)}</p>
+                      <p className="font-medium">Median: {formatDollars(d.p50)}</p>
+                      <p>25th: {formatDollars(d.p25)}</p>
+                      <p>10th: {formatDollars(d.p10)}</p>
+                    </div>
+                  );
+                }}
+              />
+              <Area type="monotone" dataKey="p10" stackId="bands" stroke="none" fill="transparent" name="base" />
+              <Area type="monotone" dataKey="band_10_25" stackId="bands" stroke="none" fill="hsl(var(--destructive))" fillOpacity={0.12} name="10th-25th" />
+              <Area type="monotone" dataKey="band_25_50" stackId="bands" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.15} name="25th-50th" />
+              <Area type="monotone" dataKey="band_50_75" stackId="bands" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.15} name="50th-75th" />
+              <Area type="monotone" dataKey="band_75_90" stackId="bands" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.08} name="75th-90th" />
+              <Line type="monotone" dataKey="p50" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Median" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: 'hsl(var(--primary))', opacity: 0.7 }} />
+            <span>Median path</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: 'hsl(var(--primary))', opacity: 0.2 }} />
+            <span>25th–75th pctile</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: 'hsl(var(--destructive))', opacity: 0.2 }} />
+            <span>10th–25th pctile</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function IncomeSpendingChart({ data }: { data: ResultsData['income_spending_timeline'] }) {
+  if (!data || data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Income vs. Spending</CardTitle>
+        <CardDescription>
+          The gap between spending and guaranteed income is what your portfolio must cover each year
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="h-72" data-testid="chart-income-spending">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis 
+                dataKey="age" 
+                tick={{ fontSize: 11 }}
+                label={{ value: 'Age', position: 'insideBottom', offset: -5, fontSize: 11 }}
+              />
+              <YAxis 
+                tickFormatter={(v) => formatDollars(v)}
+                tick={{ fontSize: 11 }}
+                width={55}
+              />
+              <Tooltip 
+                formatter={(value: number, name: string) => [formatDollars(value), name]}
+                labelFormatter={(label) => `Age ${label}`}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Area type="monotone" dataKey="ss_income" stackId="income" fill="#22c55e" fillOpacity={0.4} stroke="#22c55e" name="Social Security" />
+              <Area type="monotone" dataKey="pension_income" stackId="income" fill="#3b82f6" fillOpacity={0.4} stroke="#3b82f6" name="Pension" />
+              <Area type="monotone" dataKey="other_income" stackId="income" fill="#8b5cf6" fillOpacity={0.4} stroke="#8b5cf6" name="Other Income" />
+              <Area type="monotone" dataKey="portfolio_withdrawal" stackId="income" fill="#f97316" fillOpacity={0.3} stroke="#f97316" name="Portfolio Withdrawal" />
+              <Line type="monotone" dataKey="total_spending" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} name="Total Spending" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WhatIfScenarios({ scenarios }: { scenarios: ResultsData['what_if_scenarios'] }) {
+  if (!scenarios || scenarios.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-5 w-5 text-primary" />
+          <CardTitle className="text-base">What If…?</CardTitle>
+        </div>
+        <CardDescription>
+          See how specific changes could impact your success probability
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {scenarios.map((scenario, index) => {
+            const diff = scenario.scenario_probability - scenario.original_probability;
+            const isPositive = diff > 0;
+            const isNeutral = Math.abs(diff) < 1;
+            const DiffIcon = isNeutral ? Minus : isPositive ? ArrowUpRight : ArrowDownRight;
+            const diffColor = isNeutral ? "text-muted-foreground" : isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
+
+            return (
+              <div key={index} className="p-4 bg-muted/30 rounded-lg border" data-testid={`card-whatif-${index}`}>
+                <p className="text-sm font-medium mb-1">{scenario.label}</p>
+                <p className="text-xs text-muted-foreground mb-3">{scenario.description}</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-2xl font-bold">{scenario.scenario_probability.toFixed(0)}%</span>
+                  <div className={cn("flex items-center text-sm font-medium mb-0.5", diffColor)}>
+                    <DiffIcon className="h-4 w-4" />
+                    <span>{isNeutral ? "~0" : (isPositive ? "+" : "") + diff.toFixed(0)}%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RiskCard({ risk, index }: { risk: ResultsData['top_3_risks'][0]; index: number }) {
   const severityColors = {
     high: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300",
     medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300",
@@ -137,12 +407,17 @@ function RiskCard({ risk, index }: { risk: { title: string; description: string;
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">{risk.description}</p>
+        {risk.impact_estimate && (
+          <p className="text-xs text-destructive/80 mt-2 font-medium" data-testid={`text-risk-impact-${index}`}>
+            {risk.impact_estimate}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function LeverCard({ lever, index }: { lever: { title: string; description: string; impact: string }; index: number }) {
+function LeverCard({ lever, index }: { lever: ResultsData['top_3_levers'][0]; index: number }) {
   const impactColors = {
     high: "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300",
     medium: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300",
@@ -166,6 +441,43 @@ function LeverCard({ lever, index }: { lever: { title: string; description: stri
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">{lever.description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SpendingPhasesCard({ phases, duration }: { phases?: ResultsData['simulation_details']['spending_phases']; duration: number }) {
+  if (!phases) return null;
+  const maxSpending = Math.max(phases.early, phases.mid, phases.late);
+  const items = [
+    { label: "Early (Years 1–10)", value: phases.early, years: Math.min(10, duration) },
+    { label: "Mid (Years 11–20)", value: phases.mid, years: Math.min(10, Math.max(0, duration - 10)) },
+    { label: "Late (Years 21+)", value: phases.late, years: Math.max(0, duration - 20) }
+  ].filter(item => item.years > 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Spending by Phase</CardTitle>
+        <CardDescription>Average annual spending across different retirement phases</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {items.map((item, idx) => (
+            <div key={idx} data-testid={`spending-phase-${idx}`}>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-muted-foreground">{item.label}</span>
+                <span className="font-medium">{formatDollars(item.value)}/yr</span>
+              </div>
+              <div className="h-3 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary/60 rounded-full transition-all"
+                  style={{ width: `${maxSpending > 0 ? (item.value / maxSpending) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
@@ -218,6 +530,10 @@ export default function ResultsPage() {
           </div>
           
           <VerdictDisplay verdict={results.verdict} probability={results.success_probability} />
+
+          {results.narrative_summary && (
+            <NarrativeSummary narrative={results.narrative_summary} />
+          )}
           
           <div className="flex justify-center">
             <Button
@@ -229,6 +545,14 @@ export default function ResultsPage() {
               Modify My Responses
             </Button>
           </div>
+
+          <KeyMetricsRow details={results.simulation_details} />
+
+          <TrajectoryChart data={results.trajectory_percentiles} />
+
+          <IncomeSpendingChart data={results.income_spending_timeline} />
+
+          <WhatIfScenarios scenarios={results.what_if_scenarios} />
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
@@ -251,6 +575,8 @@ export default function ResultsPage() {
               ))}
             </div>
           </div>
+
+          <SpendingPhasesCard phases={results.simulation_details.spending_phases} duration={results.simulation_details.retirement_duration_years} />
           
           {results.special_callouts && results.special_callouts.length > 0 && (
             <Card>
@@ -351,69 +677,24 @@ export default function ResultsPage() {
                       <p className="text-2xl font-semibold">{results.simulation_details.trials.toLocaleString()}</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Retirement Duration</p>
-                      <p className="text-2xl font-semibold">{results.simulation_details.retirement_duration_years} years</p>
-                    </div>
-                    <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Year 1 Spending</p>
-                      <p className="text-2xl font-semibold">${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k</p>
+                      <p className="text-2xl font-semibold">{formatDollars(results.simulation_details.annual_spending_year1)}</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Guaranteed Income</p>
-                      <p className="text-2xl font-semibold">${(results.simulation_details.guaranteed_income_at_start / 1000).toFixed(0)}k/yr</p>
+                      <p className="text-2xl font-semibold">{formatDollars(results.simulation_details.guaranteed_income_at_start)}/yr</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Median Ending Portfolio</p>
-                      <p className="text-2xl font-semibold">${(results.simulation_details.median_ending_portfolio / 1000000).toFixed(1)}M</p>
+                      <p className="text-2xl font-semibold">{formatDollars(results.simulation_details.median_ending_portfolio)}</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Worst Case</p>
-                      <p className="text-2xl font-semibold">${(results.simulation_details.worst_case_portfolio / 1000).toFixed(0)}k</p>
+                      <p className="text-sm text-muted-foreground">Worst Case (5th pctile)</p>
+                      <p className="text-2xl font-semibold">{formatDollars(results.simulation_details.worst_case_portfolio)}</p>
                     </div>
-                  </div>
-                  
-                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                    <h4 className="text-sm font-medium mb-4">Withdrawal Rate Analysis</h4>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Your withdrawal rate shows how much of your portfolio you need to withdraw each year relative to your starting assets. 
-                      Generally, 4% or below is considered sustainable for a 30-year retirement.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className={cn("p-4 rounded-lg border", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).bg)}>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-medium">Early Retirement Rate</p>
-                          <Badge variant="secondary" className={cn("text-xs", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).text)}>
-                            {getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).label}
-                          </Badge>
-                        </div>
-                        <p className={cn("text-3xl font-bold", getWithdrawalRateColor(results.simulation_details.pre_ss_withdrawal_rate).text)} data-testid="text-pre-ss-withdrawal-rate">
-                          {results.simulation_details.pre_ss_withdrawal_rate.toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Before Social Security begins
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          ${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k / ${(results.simulation_details.starting_portfolio / 1000).toFixed(0)}k
-                        </p>
-                      </div>
-                      
-                      <div className={cn("p-4 rounded-lg border", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).bg)}>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-medium">With Social Security</p>
-                          <Badge variant="secondary" className={cn("text-xs", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).text)}>
-                            {getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).label}
-                          </Badge>
-                        </div>
-                        <p className={cn("text-3xl font-bold", getWithdrawalRateColor(results.simulation_details.post_ss_withdrawal_rate).text)} data-testid="text-post-ss-withdrawal-rate">
-                          {results.simulation_details.post_ss_withdrawal_rate.toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          After ${(results.simulation_details.ss_annual_income / 1000).toFixed(0)}k/yr SS kicks in
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          (${(results.simulation_details.annual_spending_year1 / 1000).toFixed(0)}k - ${(results.simulation_details.ss_annual_income / 1000).toFixed(0)}k) / ${(results.simulation_details.starting_portfolio / 1000).toFixed(0)}k
-                        </p>
-                      </div>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Year 1 Spending</p>
+                      <p className="text-2xl font-semibold">{formatDollars(results.simulation_details.annual_spending_year1)}/yr</p>
                     </div>
                   </div>
                 </div>

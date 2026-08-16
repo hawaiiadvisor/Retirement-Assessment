@@ -1,6 +1,12 @@
 import { ruleset } from "./ruleset";
 import type { IntakeData, ResultsData } from "./schema";
 
+function formatDollarsShort(value: number): string {
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `$${Math.round(value / 1000)}k`;
+  return `$${Math.round(value)}`;
+}
+
 function randomNormal(mean: number, stdDev: number): number {
   const u1 = Math.random();
   const u2 = Math.random();
@@ -31,6 +37,15 @@ function calculateRetirementDuration(intake: IntakeData): number {
   }
   
   return maxLifeExp - intake.retirement_age;
+}
+
+function getEarlierDeathAge(intake: IntakeData): number | undefined {
+  if (intake.planning_for !== 'couple' || !intake.spouse_life_expectancy) {
+    return undefined;
+  }
+  const userLifeExp = getLifeExpectancyAge(intake.user_life_expectancy);
+  const spouseLifeExp = getLifeExpectancyAge(intake.spouse_life_expectancy);
+  return Math.min(userLifeExp, spouseLifeExp);
 }
 
 function calculateAnnualSpending(
@@ -67,7 +82,7 @@ function calculateAnnualSpending(
   if (year < 5 && intake.early_spending_pattern === 'higher') {
     spending *= 1.15;
   } else if (year < 3 && intake.early_spending_pattern === 'one_time_purchases') {
-    spending += 20000;
+    spending += (intake.monthly_spending_ex_mortgage * 12) * ruleset.one_time_purchase_factor;
   } else if (intake.early_spending_pattern === 'lower') {
     spending *= 0.90;
   }
@@ -84,27 +99,44 @@ function calculateAnnualSpending(
     spending += ltcCost;
   }
   
-  spending *= Math.pow(1 + ruleset.monte_carlo.inflation_rate, year);
+  const earlierDeathAge = getEarlierDeathAge(intake);
+  if (earlierDeathAge !== undefined && currentAge >= earlierDeathAge) {
+    spending *= (1 - ruleset.survivor_spending_reduction);
+  }
   
   return spending;
 }
 
-function calculateGuaranteedIncome(intake: IntakeData, year: number, retirementAge: number): number {
-  const currentAge = retirementAge + year;
-  let income = 0;
-  
-  if (!intake.ss_not_sure && intake.ss_claim_age && intake.ss_monthly_household) {
+function getSSIncome(intake: IntakeData, currentAge: number): number {
+  if (intake.ss_not_sure) {
+    const ssDefault = intake.planning_for === 'couple'
+      ? ruleset.ss_defaults.couple_monthly
+      : ruleset.ss_defaults.individual_monthly;
+    const claimAge = ruleset.ss_defaults.default_claim_age;
+    if (currentAge >= claimAge) {
+      return ssDefault * 12;
+    }
+  } else if (intake.ss_claim_age && intake.ss_monthly_household) {
     if (currentAge >= intake.ss_claim_age) {
-      income += intake.ss_monthly_household * 12;
+      return intake.ss_monthly_household * 12;
     }
   }
-  
+  return 0;
+}
+
+function getPensionIncome(intake: IntakeData, currentAge: number): number {
   if (intake.has_pension && intake.pension_monthly && intake.pension_start_age) {
     if (currentAge >= intake.pension_start_age) {
-      income += intake.pension_monthly * 12;
+      let pensionAnnual = intake.pension_monthly * 12;
+      const pensionYears = currentAge - intake.pension_start_age;
+      pensionAnnual *= Math.pow(1 / (1 + ruleset.monte_carlo.inflation_rate), pensionYears);
+      return pensionAnnual;
     }
   }
-  
+  return 0;
+}
+
+function getOtherIncome(intake: IntakeData, currentAge: number): number {
   if (intake.has_rental_business_income && intake.rental_annual_amount && intake.rental_start_age) {
     const endAge = intake.rental_end_age === 'ongoing' ? 100 : (intake.rental_end_age || 100);
     if (currentAge >= intake.rental_start_age && currentAge < endAge) {
@@ -114,13 +146,25 @@ function calculateGuaranteedIncome(intake: IntakeData, year: number, retirementA
       } else if (intake.rental_reliability === 'uncertain') {
         rentalIncome *= 0.70;
       }
-      income += rentalIncome;
+      return rentalIncome;
     }
   }
-  
-  income *= Math.pow(1 + ruleset.monte_carlo.inflation_rate * 0.5, year);
-  
-  return income;
+  return 0;
+}
+
+function calculateGuaranteedIncome(intake: IntakeData, year: number, retirementAge: number): number {
+  const currentAge = retirementAge + year;
+  return getSSIncome(intake, currentAge) + getPensionIncome(intake, currentAge) + getOtherIncome(intake, currentAge);
+}
+
+function getNonSSIncomeAtRetirement(intake: IntakeData): number {
+  return getPensionIncome(intake, intake.retirement_age) + getOtherIncome(intake, intake.retirement_age);
+}
+
+interface TrialResult {
+  success: boolean;
+  endingPortfolio: number;
+  yearlyBalances: number[];
 }
 
 function runTrial(
@@ -128,10 +172,12 @@ function runTrial(
   startingPortfolio: number,
   duration: number,
   allocationParams: { mean_return: number; volatility: number },
-  ltcEventAge?: number
-): { success: boolean; endingPortfolio: number } {
+  ltcEventAge?: number,
+  trackYearly: boolean = false
+): TrialResult {
   let portfolio = startingPortfolio;
   const retirementAge = intake.retirement_age;
+  const taxRate = ruleset.monte_carlo.effective_tax_rate;
   
   const hasCashBuffer = intake.bridge_years === '3_5' || intake.bridge_years === '6_10' || intake.bridge_years === '10_plus';
   let cashBufferYears = 0;
@@ -140,6 +186,7 @@ function runTrial(
   else if (intake.bridge_years === '10_plus') cashBufferYears = 10;
   
   let negativeYearsUsedBuffer = 0;
+  const yearlyBalances: number[] = trackYearly ? [startingPortfolio] : [];
   
   for (let year = 0; year < duration; year++) {
     const currentAge = retirementAge + year;
@@ -149,11 +196,12 @@ function runTrial(
     
     const spending = calculateAnnualSpending(intake, year, retirementAge, hasLtcEvent, ltcYearsRemaining);
     const guaranteedIncome = calculateGuaranteedIncome(intake, year, retirementAge);
-    const portfolioWithdrawal = Math.max(0, spending - guaranteedIncome);
+    const netSpending = Math.max(0, spending - guaranteedIncome);
+    const portfolioWithdrawal = netSpending / (1 - taxRate);
     
     const annualReturn = randomNormal(allocationParams.mean_return, allocationParams.volatility);
     
-    if (year < 3 && annualReturn < 0 && hasCashBuffer && negativeYearsUsedBuffer < cashBufferYears) {
+    if (year < cashBufferYears && annualReturn < 0 && hasCashBuffer && negativeYearsUsedBuffer < cashBufferYears) {
       portfolio *= (1 + annualReturn);
       portfolio -= portfolioWithdrawal * 0.5;
       negativeYearsUsedBuffer++;
@@ -163,11 +211,18 @@ function runTrial(
     }
     
     if (portfolio < 0) {
-      return { success: false, endingPortfolio: 0 };
+      if (trackYearly) {
+        for (let r = year + 1; r < duration; r++) yearlyBalances.push(0);
+      }
+      return { success: false, endingPortfolio: 0, yearlyBalances };
+    }
+    
+    if (trackYearly) {
+      yearlyBalances.push(portfolio);
     }
   }
   
-  return { success: true, endingPortfolio: portfolio };
+  return { success: true, endingPortfolio: portfolio, yearlyBalances };
 }
 
 function generateLtcEventAge(intake: IntakeData, retirementAge: number, duration: number): number | undefined {
@@ -247,27 +302,37 @@ function calculateScoringAdjustments(intake: IntakeData, duration: number): numb
     adjustment += offsets.pension_with_survivor;
   }
   
+  const maxAdj = ruleset.scoring.max_adjustment;
+  adjustment = Math.max(-maxAdj, Math.min(maxAdj, adjustment));
+  
   return adjustment;
 }
 
 function generateTopRisks(intake: IntakeData, duration: number, successRate: number): ResultsData['top_3_risks'] {
-  const risks: { title: string; description: string; severity: 'high' | 'medium' | 'low'; score: number }[] = [];
+  const risks: { title: string; description: string; severity: 'high' | 'medium' | 'low'; score: number; impact_estimate?: string }[] = [];
   
   if (duration > 35) {
     risks.push({
       title: "Long Retirement Duration",
       description: `Your ${duration}-year retirement timeline is significantly longer than average. This increases the risk of outliving your savings.`,
       severity: duration > 40 ? 'high' : 'medium',
-      score: duration - 30
+      score: duration - 30,
+      impact_estimate: `Each extra year requires ~$${Math.round(intake.monthly_spending_ex_mortgage * 12 / 1000)}k in additional portfolio support`
     });
   }
   
   if (intake.ltc_expectation !== 'none' && intake.ltc_insurance !== 'comprehensive') {
+    const ltcYears = ruleset.ltc.years;
+    const ltcCost = ruleset.ltc.cost_per_year;
+    const insuranceReduction = ruleset.ltc.insurance_reduction[intake.ltc_insurance as keyof typeof ruleset.ltc.insurance_reduction];
+    const avgReduction = insuranceReduction ? (insuranceReduction.min + insuranceReduction.max) / 2 : 0;
+    const netCost = ltcCost * (1 - avgReduction) * ltcYears;
     risks.push({
       title: "Long-Term Care Exposure",
       description: "Potential long-term care costs could significantly impact your plan. Consider reviewing your coverage options.",
       severity: intake.ltc_expectation === 'both_may_need' ? 'high' : 'medium',
-      score: intake.ltc_expectation === 'both_may_need' ? 15 : 10
+      score: intake.ltc_expectation === 'both_may_need' ? 15 : 10,
+      impact_estimate: `Potential cost of $${Math.round(netCost / 1000)}k over ${ltcYears} years`
     });
   }
   
@@ -276,7 +341,8 @@ function generateTopRisks(intake: IntakeData, duration: number, successRate: num
       title: "Sequence of Returns Risk",
       description: "Limited cash reserves make you vulnerable to market downturns in early retirement. A poor first few years could significantly impact your plan.",
       severity: 'high',
-      score: 12
+      score: 12,
+      impact_estimate: "A 2008-style downturn could reduce success rate by 15-25%"
     });
   }
   
@@ -285,17 +351,23 @@ function generateTopRisks(intake: IntakeData, duration: number, successRate: num
       title: "Portfolio Concentration",
       description: "A concentrated portfolio increases volatility and risk. Consider diversifying across asset classes.",
       severity: 'high',
-      score: 14
+      score: 14,
+      impact_estimate: "Concentrated portfolios can lose 40-60% in a single downturn"
     });
   }
   
   if (intake.pre65_healthcare !== 'no' && intake.retirement_age < 65) {
     const yearsWithoutMedicare = 65 - intake.retirement_age;
+    const annualCost = intake.planning_for === 'couple'
+      ? ruleset.healthcare.default_pre65_per_person_monthly * 2 * 12
+      : ruleset.healthcare.default_pre65_per_person_monthly * 12;
+    const totalCost = annualCost * yearsWithoutMedicare;
     risks.push({
       title: "Pre-Medicare Healthcare Gap",
       description: `You'll need ${yearsWithoutMedicare} years of healthcare coverage before Medicare eligibility, which can be expensive.`,
       severity: yearsWithoutMedicare > 5 ? 'high' : 'medium',
-      score: yearsWithoutMedicare * 2
+      score: yearsWithoutMedicare * 2,
+      impact_estimate: `~$${Math.round(totalCost / 1000)}k total over ${yearsWithoutMedicare} years (~$${Math.round(annualCost / 1000)}k/yr)`
     });
   }
   
@@ -304,7 +376,8 @@ function generateTopRisks(intake: IntakeData, duration: number, successRate: num
       title: "Portfolio Diversification Concerns",
       description: "Your portfolio may lack sufficient diversification. This increases risk and volatility.",
       severity: 'medium',
-      score: 8
+      score: 8,
+      impact_estimate: "Poor diversification can add 3-5% annual volatility"
     });
   }
   
@@ -313,11 +386,13 @@ function generateTopRisks(intake: IntakeData, duration: number, successRate: num
     const payoffAge = intake.mortgage_payoff_year - birthYear;
     if (payoffAge > intake.retirement_age) {
       const yearsWithMortgage = payoffAge - intake.retirement_age;
+      const totalMortgageCost = (intake.mortgage_monthly || 0) * 12 * yearsWithMortgage;
       risks.push({
         title: "Mortgage in Retirement",
         description: `You'll have ${yearsWithMortgage} years of mortgage payments in retirement, reducing flexibility.`,
         severity: yearsWithMortgage > 5 ? 'medium' : 'low',
-        score: yearsWithMortgage
+        score: yearsWithMortgage,
+        impact_estimate: `$${Math.round(totalMortgageCost / 1000)}k total mortgage cost in retirement`
       });
     }
   }
@@ -327,14 +402,15 @@ function generateTopRisks(intake: IntakeData, duration: number, successRate: num
       title: "Behavioral Risk",
       description: "Emotional reactions to market volatility could lead to poor timing decisions. Having a plan before downturns occur is crucial.",
       severity: 'medium',
-      score: 7
+      score: 7,
+      impact_estimate: "Panic selling during downturns costs 2-4% annually on average"
     });
   }
   
   return risks
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
-    .map(({ title, description, severity }) => ({ title, description, severity }));
+    .map(({ title, description, severity, impact_estimate }) => ({ title, description, severity, impact_estimate }));
 }
 
 function generateTopLevers(intake: IntakeData, duration: number): ResultsData['top_3_levers'] {
@@ -449,6 +525,16 @@ function generateSpecialCallouts(intake: IntakeData, duration: number): ResultsD
     });
   }
   
+  if (intake.ss_not_sure) {
+    const ssDefault = intake.planning_for === 'couple'
+      ? ruleset.ss_defaults.couple_monthly
+      : ruleset.ss_defaults.individual_monthly;
+    callouts.push({
+      type: "Social Security Estimate",
+      message: `Since you weren't sure about Social Security, we assumed $${ssDefault.toLocaleString()}/month starting at age ${ruleset.ss_defaults.default_claim_age}. Your actual benefit may differ — check ssa.gov for a personalized estimate.`
+    });
+  }
+  
   return callouts;
 }
 
@@ -502,6 +588,202 @@ function generateDistributionData(portfolios: number[], total: number): { range:
   return distribution;
 }
 
+function computeTrajectoryPercentiles(
+  allYearlyBalances: number[][],
+  duration: number,
+  retirementAge: number
+): ResultsData['trajectory_percentiles'] {
+  const result: ResultsData['trajectory_percentiles'] = [];
+
+  for (let y = 0; y <= duration; y++) {
+    const vals = allYearlyBalances.map(b => b[y] ?? 0).sort((a, b) => a - b);
+    const n = vals.length;
+    const pct = (p: number) => vals[Math.floor(n * p)] ?? 0;
+    result.push({
+      year: y,
+      age: retirementAge + y,
+      p10: Math.round(pct(0.10)),
+      p25: Math.round(pct(0.25)),
+      p50: Math.round(pct(0.50)),
+      p75: Math.round(pct(0.75)),
+      p90: Math.round(pct(0.90))
+    });
+  }
+  return result;
+}
+
+function generateIncomeSpendingTimeline(
+  intake: IntakeData,
+  duration: number,
+  retirementAge: number
+): ResultsData['income_spending_timeline'] {
+  const timeline: ResultsData['income_spending_timeline'] = [];
+
+  for (let year = 0; year < duration; year++) {
+    const currentAge = retirementAge + year;
+    const totalSpending = calculateAnnualSpending(intake, year, retirementAge, false, 0);
+    const ssIncome = getSSIncome(intake, currentAge);
+    const pensionIncome = getPensionIncome(intake, currentAge);
+    const otherIncome = getOtherIncome(intake, currentAge);
+    const totalIncome = ssIncome + pensionIncome + otherIncome;
+    const portfolioWithdrawal = Math.max(0, totalSpending - totalIncome);
+
+    timeline.push({
+      age: currentAge,
+      total_spending: Math.round(totalSpending),
+      ss_income: Math.round(ssIncome),
+      pension_income: Math.round(pensionIncome),
+      other_income: Math.round(otherIncome),
+      portfolio_withdrawal: Math.round(portfolioWithdrawal)
+    });
+  }
+  return timeline;
+}
+
+function computeSpendingPhases(
+  intake: IntakeData,
+  duration: number,
+  retirementAge: number
+): { early: number; mid: number; late: number } {
+  let earlyTotal = 0, earlyCount = 0;
+  let midTotal = 0, midCount = 0;
+  let lateTotal = 0, lateCount = 0;
+
+  for (let year = 0; year < duration; year++) {
+    const spending = calculateAnnualSpending(intake, year, retirementAge, false, 0);
+    if (year < 10) { earlyTotal += spending; earlyCount++; }
+    else if (year < 20) { midTotal += spending; midCount++; }
+    else { lateTotal += spending; lateCount++; }
+  }
+
+  return {
+    early: earlyCount > 0 ? Math.round(earlyTotal / earlyCount) : 0,
+    mid: midCount > 0 ? Math.round(midTotal / midCount) : 0,
+    late: lateCount > 0 ? Math.round(lateTotal / lateCount) : 0
+  };
+}
+
+function runQuickSimulation(
+  intake: IntakeData,
+  startingPortfolio: number,
+  duration: number,
+  allocationParams: { mean_return: number; volatility: number }
+): number {
+  const quickTrials = 500;
+  let successCount = 0;
+  for (let i = 0; i < quickTrials; i++) {
+    const ltcEventAge = generateLtcEventAge(intake, intake.retirement_age, duration);
+    const result = runTrial(intake, startingPortfolio, duration, allocationParams, ltcEventAge, false);
+    if (result.success) successCount++;
+  }
+  let prob = (successCount / quickTrials) * 100;
+  const adj = calculateScoringAdjustments(intake, duration);
+  prob = Math.max(0, Math.min(100, prob + adj));
+  return Math.round(prob * 10) / 10;
+}
+
+function generateWhatIfScenarios(
+  intake: IntakeData,
+  originalProbability: number,
+  startingPortfolio: number,
+  allocationParams: { mean_return: number; volatility: number }
+): ResultsData['what_if_scenarios'] {
+  const scenarios: ResultsData['what_if_scenarios'] = [];
+
+  const delayYears = 2;
+  const delayIntake = { ...intake, retirement_age: intake.retirement_age + delayYears };
+  const delayDuration = calculateRetirementDuration(delayIntake);
+  if (delayDuration > 0) {
+    const growthFactor = Math.pow(1 + allocationParams.mean_return, delayYears);
+    const delayPortfolio = Math.round(startingPortfolio * growthFactor);
+    const prob = runQuickSimulation(delayIntake, delayPortfolio, delayDuration, allocationParams);
+    scenarios.push({
+      label: "Delay Retirement 2 Years",
+      description: `Retire at ${intake.retirement_age + delayYears} with ~${formatDollarsShort(delayPortfolio)} (portfolio grows ${delayYears} more years)`,
+      original_probability: originalProbability,
+      scenario_probability: prob
+    });
+  }
+
+  const reducedIntake = { ...intake, monthly_spending_ex_mortgage: Math.round(intake.monthly_spending_ex_mortgage * 0.9) };
+  const reducedDuration = calculateRetirementDuration(reducedIntake);
+  const probReduced = runQuickSimulation(reducedIntake, startingPortfolio, reducedDuration, allocationParams);
+  scenarios.push({
+    label: "Reduce Spending 10%",
+    description: `Lower monthly spending from $${intake.monthly_spending_ex_mortgage.toLocaleString()} to $${reducedIntake.monthly_spending_ex_mortgage.toLocaleString()}`,
+    original_probability: originalProbability,
+    scenario_probability: probReduced
+  });
+
+  const ssClaimAge = intake.ss_not_sure ? ruleset.ss_defaults.default_claim_age : (intake.ss_claim_age || 67);
+  if (ssClaimAge < 70) {
+    const currentMonthly = intake.ss_not_sure
+      ? (intake.planning_for === 'couple' ? ruleset.ss_defaults.couple_monthly : ruleset.ss_defaults.individual_monthly)
+      : (intake.ss_monthly_household || 0);
+    const yearsDelay = 70 - ssClaimAge;
+    const boostedMonthly = Math.round(currentMonthly * (1 + 0.08 * yearsDelay));
+    const delaySSIntake = {
+      ...intake,
+      ss_not_sure: false,
+      ss_claim_age: 70 as number | null,
+      ss_monthly_household: boostedMonthly as number | null
+    };
+    const ssDuration = calculateRetirementDuration(delaySSIntake);
+    const probSS = runQuickSimulation(delaySSIntake, startingPortfolio, ssDuration, allocationParams);
+    scenarios.push({
+      label: "Delay SS to Age 70",
+      description: `Wait until 70 for ~$${boostedMonthly.toLocaleString()}/mo instead of $${currentMonthly.toLocaleString()}/mo at ${ssClaimAge}`,
+      original_probability: originalProbability,
+      scenario_probability: probSS
+    });
+  }
+
+  return scenarios;
+}
+
+function generateNarrativeSummary(
+  intake: IntakeData,
+  duration: number,
+  successProbability: number,
+  startingPortfolio: number,
+  year1Spending: number,
+  year1Income: number,
+  ssAnnualIncome: number
+): string {
+  const planType = intake.planning_for === 'couple' ? 'you and your spouse' : 'you';
+  const retAge = intake.retirement_age;
+  const portfolioLabel = startingPortfolio >= 1000000
+    ? `$${(startingPortfolio / 1000000).toFixed(1)}M`
+    : `$${Math.round(startingPortfolio / 1000)}k`;
+
+  let narrative = `Based on your inputs, ${planType} are planning a ${duration}-year retirement starting at age ${retAge} with ${portfolioLabel} in savings.`;
+
+  const ssClaimAge = intake.ss_not_sure ? ruleset.ss_defaults.default_claim_age : (intake.ss_claim_age || null);
+  if (ssClaimAge && ssClaimAge > retAge) {
+    const gapYears = ssClaimAge - retAge;
+    const annualWithdrawal = Math.max(0, year1Spending - (year1Income - (ssAnnualIncome > 0 && year1Income >= ssAnnualIncome ? ssAnnualIncome : 0)));
+    const withdrawalLabel = annualWithdrawal >= 1000 ? `$${Math.round(annualWithdrawal / 1000)}k` : `$${Math.round(annualWithdrawal).toLocaleString()}`;
+    narrative += ` Your biggest challenge is the ${gapYears}-year gap before Social Security begins at ${ssClaimAge}, during which you'll need to withdraw about ${withdrawalLabel}/year from your portfolio.`;
+  }
+
+  if (ssAnnualIncome > 0) {
+    const coveragePct = Math.round((ssAnnualIncome / year1Spending) * 100);
+    if (coveragePct > 0) {
+      narrative += ` Once Social Security kicks in, it covers about ${coveragePct}% of your spending needs, significantly reducing portfolio strain.`;
+    }
+  }
+
+  if (successProbability >= 85) {
+    narrative += ` Overall, your plan shows strong resilience across most market scenarios.`;
+  } else if (successProbability >= 70) {
+    narrative += ` Your plan has a reasonable foundation but could benefit from targeted adjustments to improve confidence.`;
+  } else {
+    narrative += ` Your current plan faces meaningful headwinds — the levers below highlight the most impactful changes you can make.`;
+  }
+
+  return narrative;
+}
+
 export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
   const { trials } = ruleset.monte_carlo;
   const startingPortfolio = getStartingPortfolio(intake.assets_bucket);
@@ -510,15 +792,17 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
   
   let successCount = 0;
   const endingPortfolios: number[] = [];
+  const allYearlyBalances: number[][] = [];
   
   for (let i = 0; i < trials; i++) {
     const ltcEventAge = generateLtcEventAge(intake, intake.retirement_age, duration);
-    const result = runTrial(intake, startingPortfolio, duration, allocationParams, ltcEventAge);
+    const result = runTrial(intake, startingPortfolio, duration, allocationParams, ltcEventAge, true);
     
     if (result.success) {
       successCount++;
     }
     endingPortfolios.push(result.endingPortfolio);
+    allYearlyBalances.push(result.yearlyBalances);
   }
   
   let successProbability = (successCount / trials) * 100;
@@ -536,6 +820,8 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
     }
   }
   
+  const finalProbability = Math.round(successProbability * 10) / 10;
+
   endingPortfolios.sort((a, b) => a - b);
   const medianIndex = Math.floor(endingPortfolios.length / 2);
   const worstCaseIndex = Math.floor(endingPortfolios.length * 0.05);
@@ -552,35 +838,56 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
   const year1Spending = calculateAnnualSpending(intake, 0, intake.retirement_age, false, 0);
   const year1GuaranteedIncome = calculateGuaranteedIncome(intake, 0, intake.retirement_age);
   
-  const ssAnnualIncome = (!intake.ss_not_sure && intake.ss_monthly_household) 
-    ? intake.ss_monthly_household * 12 
-    : 0;
+  const ssAnnualIncome = intake.ss_not_sure
+    ? (intake.planning_for === 'couple' ? ruleset.ss_defaults.couple_monthly : ruleset.ss_defaults.individual_monthly) * 12
+    : (intake.ss_monthly_household ? intake.ss_monthly_household * 12 : 0);
   
+  const nonSSIncome = getNonSSIncomeAtRetirement(intake);
+  const ssClaimAge = intake.ss_not_sure ? ruleset.ss_defaults.default_claim_age : (intake.ss_claim_age || 99);
+  const ssActiveAtRetirement = intake.retirement_age >= ssClaimAge;
+  const year1IncomeWithoutSS = nonSSIncome;
+  const year1IncomeWithSS = nonSSIncome + ssAnnualIncome;
+
   const preSSWithdrawalRate = startingPortfolio > 0 
-    ? (year1Spending / startingPortfolio) * 100 
+    ? (Math.max(0, year1Spending - (ssActiveAtRetirement ? year1IncomeWithSS : year1IncomeWithoutSS)) / startingPortfolio) * 100 
     : 0;
   
   const postSSWithdrawalRate = startingPortfolio > 0 
-    ? (Math.max(0, year1Spending - ssAnnualIncome) / startingPortfolio) * 100 
+    ? (Math.max(0, year1Spending - year1IncomeWithSS) / startingPortfolio) * 100 
     : 0;
-  
+
+  const incomeFloorCoveragePct = year1Spending > 0
+    ? Math.round((year1GuaranteedIncome / year1Spending) * 100)
+    : 0;
+
   const distributionData = generateDistributionData(endingPortfolios, trials);
+  const trajectoryPercentiles = computeTrajectoryPercentiles(allYearlyBalances, duration, intake.retirement_age);
+  const incomeSpendingTimeline = generateIncomeSpendingTimeline(intake, duration, intake.retirement_age);
+  const spendingPhases = computeSpendingPhases(intake, duration, intake.retirement_age);
+  const whatIfScenarios = generateWhatIfScenarios(intake, finalProbability, startingPortfolio, allocationParams);
+  const narrativeSummary = generateNarrativeSummary(intake, duration, finalProbability, startingPortfolio, year1Spending, year1GuaranteedIncome, ssAnnualIncome);
   
   return {
     verdict,
-    success_probability: Math.round(successProbability * 10) / 10,
+    success_probability: finalProbability,
+    narrative_summary: narrativeSummary,
     top_3_risks: generateTopRisks(intake, duration, successProbability),
     top_3_levers: generateTopLevers(intake, duration),
     what_matters_less: generateWhatMattersLess(intake),
     assumptions_and_limits: [
-      `Inflation assumed at ${(ruleset.monte_carlo.inflation_rate * 100).toFixed(1)}% annually`,
-      `Portfolio returns modeled using ${allocationParams.mean_return * 100}% mean return with ${allocationParams.volatility * 100}% volatility`,
-      `Social Security assumed to pay stated benefits (no reduction modeled)`,
-      `Long-term care costs estimated at $${(ruleset.ltc.cost_per_year / 1000).toFixed(0)}k/year for ${ruleset.ltc.years} years if needed`,
-      `Taxes not explicitly modeled - actual withdrawals may need to be higher`,
+      `Returns modeled as real (inflation-adjusted) at ${(allocationParams.mean_return * 100).toFixed(1)}% mean with ${(allocationParams.volatility * 100).toFixed(0)}% volatility`,
+      `An effective tax rate of ${(ruleset.monte_carlo.effective_tax_rate * 100).toFixed(0)}% is applied to portfolio withdrawals`,
+      `Social Security income tracks full CPI inflation; pension income has no COLA adjustment`,
+      intake.ss_not_sure
+        ? `Social Security estimated at $${(intake.planning_for === 'couple' ? ruleset.ss_defaults.couple_monthly : ruleset.ss_defaults.individual_monthly).toLocaleString()}/month (default assumption)`
+        : `Social Security assumed to pay stated benefits (no reduction modeled)`,
+      `Long-term care costs estimated at $${(ruleset.ltc.cost_per_year / 1000).toFixed(0)}k/year (in today's dollars) for ${ruleset.ltc.years} years if needed`,
       `Results based on ${trials.toLocaleString()} Monte Carlo simulations`
     ],
     special_callouts: generateSpecialCallouts(intake, duration),
+    what_if_scenarios: whatIfScenarios,
+    trajectory_percentiles: trajectoryPercentiles,
+    income_spending_timeline: incomeSpendingTimeline,
     simulation_details: {
       trials,
       median_ending_portfolio: Math.round(endingPortfolios[medianIndex] || 0),
@@ -592,6 +899,8 @@ export function runMonteCarloSimulation(intake: IntakeData): ResultsData {
       ss_annual_income: ssAnnualIncome,
       pre_ss_withdrawal_rate: Math.round(preSSWithdrawalRate * 10) / 10,
       post_ss_withdrawal_rate: Math.round(postSSWithdrawalRate * 10) / 10,
+      income_floor_coverage_pct: incomeFloorCoveragePct,
+      spending_phases: spendingPhases,
       distribution_data: distributionData
     }
   };

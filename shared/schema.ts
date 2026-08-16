@@ -74,10 +74,12 @@ export type IntakeData = z.infer<typeof intakeSchema>;
 export const resultsSchema = z.object({
   verdict: z.enum(['on_track', 'borderline', 'at_risk']),
   success_probability: z.number().min(0).max(100),
+  narrative_summary: z.string(),
   top_3_risks: z.array(z.object({
     title: z.string(),
     description: z.string(),
-    severity: z.enum(['high', 'medium', 'low'])
+    severity: z.enum(['high', 'medium', 'low']),
+    impact_estimate: z.string().optional()
   })),
   top_3_levers: z.array(z.object({
     title: z.string(),
@@ -90,6 +92,29 @@ export const resultsSchema = z.object({
     type: z.string(),
     message: z.string()
   })),
+  what_if_scenarios: z.array(z.object({
+    label: z.string(),
+    description: z.string(),
+    original_probability: z.number(),
+    scenario_probability: z.number()
+  })),
+  trajectory_percentiles: z.array(z.object({
+    year: z.number(),
+    age: z.number(),
+    p10: z.number(),
+    p25: z.number(),
+    p50: z.number(),
+    p75: z.number(),
+    p90: z.number()
+  })),
+  income_spending_timeline: z.array(z.object({
+    age: z.number(),
+    total_spending: z.number(),
+    ss_income: z.number(),
+    pension_income: z.number(),
+    other_income: z.number(),
+    portfolio_withdrawal: z.number()
+  })),
   simulation_details: z.object({
     trials: z.number(),
     median_ending_portfolio: z.number(),
@@ -101,6 +126,12 @@ export const resultsSchema = z.object({
     ss_annual_income: z.number(),
     pre_ss_withdrawal_rate: z.number(),
     post_ss_withdrawal_rate: z.number(),
+    income_floor_coverage_pct: z.number(),
+    spending_phases: z.object({
+      early: z.number(),
+      mid: z.number(),
+      late: z.number()
+    }),
     distribution_data: z.array(z.object({
       range: z.string(),
       count: z.number(),

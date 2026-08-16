@@ -1,18 +1,14 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Step {
-  number: number;
-  title: string;
-  description?: string;
-}
+import type { Step } from "./intakeSteps";
 
 interface StepIndicatorProps {
   steps: Step[];
   currentStep: number;
+  onStepClick?: (step: number) => void;
 }
 
-export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
+export function StepIndicator({ steps, currentStep, onStepClick }: StepIndicatorProps) {
   return (
     <div className="hidden lg:block w-64 shrink-0">
       <nav aria-label="Progress" className="sticky top-24">
@@ -20,14 +16,25 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
           {steps.map((step) => {
             const isComplete = step.number < currentStep;
             const isCurrent = step.number === currentStep;
-            
+            const isClickable = (isComplete || isCurrent) && !!onStepClick;
+
             return (
               <li key={step.number}>
                 <div
+                  role={isClickable ? "button" : undefined}
+                  tabIndex={isClickable ? 0 : undefined}
+                  onClick={() => isClickable && onStepClick(step.number)}
+                  onKeyDown={(e) => {
+                    if (isClickable && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onStepClick(step.number);
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
                     isCurrent && "bg-primary/10",
-                    !isCurrent && !isComplete && "opacity-50"
+                    isComplete && "hover:bg-muted cursor-pointer",
+                    !isCurrent && !isComplete && "opacity-50 cursor-default"
                   )}
                   data-testid={`step-indicator-${step.number}`}
                 >
@@ -46,10 +53,12 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className={cn(
-                      "text-sm font-medium truncate",
-                      isCurrent ? "text-foreground" : "text-muted-foreground"
-                    )}>
+                    <p
+                      className={cn(
+                        "text-sm font-medium truncate",
+                        isCurrent ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
                       {step.title}
                     </p>
                   </div>
@@ -62,13 +71,3 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
     </div>
   );
 }
-
-export const INTAKE_STEPS: Step[] = [
-  { number: 1, title: "Household & Timing" },
-  { number: 2, title: "Life Expectancy" },
-  { number: 3, title: "Spending" },
-  { number: 4, title: "Guaranteed Income" },
-  { number: 5, title: "Portfolio" },
-  { number: 6, title: "Stress & Behavior" },
-  { number: 7, title: "Final Review" }
-];
